@@ -197,7 +197,7 @@ void main() {
     // 首页：继续观看
     await tester.tap(find.text('首页').last);
     await wait(tester, 1000);
-    expect(find.text('继续观看'), findsOneWidget);
+    expect(find.text('继续观看'), findsWidgets); // 大图小标题 + 货架标题
     await shot(tester, '7_home_continue');
   });
 }

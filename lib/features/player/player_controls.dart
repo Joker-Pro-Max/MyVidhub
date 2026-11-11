@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../ui/components.dart';
+import '../../ui/tokens.dart';
+
 import 'play_item.dart';
 import 'player_page.dart';
 import 'player_panels.dart';
 import 'player_session.dart';
 
-const _accent = Color(0xFFF2B33D);
+const _accent = Palette.light;
 
 class PlayerControls extends StatelessWidget {
   const PlayerControls({
@@ -459,14 +462,14 @@ class ResumeToast extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.black.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(10),
+        color: Palette.surface2.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(28),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+          padding: const EdgeInsets.fromLTRB(18, 6, 6, 6),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text('已从 ${formatDuration(from)} 继续播放', style: const TextStyle(color: Colors.white)),
             const SizedBox(width: 8),
-            TextButton(onPressed: onRestart, child: const Text('从头播放')),
+            PillButton(label: '从头播放', primary: false, compact: true, onPressed: onRestart),
           ]),
         ),
       );
@@ -480,7 +483,7 @@ class UpNextCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final next = session.queue[session.index + 1];
     return Material(
-      color: const Color(0xEE1A1C22),
+      color: Palette.surface2.withValues(alpha: 0.94),
       borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -496,13 +499,9 @@ class UpNextCard extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             Row(children: [
-              FilledButton.icon(
-                onPressed: session.next,
-                icon: const Icon(Icons.skip_next_rounded),
-                label: const Text('立即播放'),
-              ),
+              PillButton(label: '立即播放', icon: Icons.skip_next_rounded, compact: true, onPressed: session.next),
               const SizedBox(width: 8),
-              TextButton(onPressed: session.cancelUpNext, child: const Text('取消')),
+              PillButton(label: '取消', primary: false, compact: true, onPressed: session.cancelUpNext),
             ]),
           ]),
         ),

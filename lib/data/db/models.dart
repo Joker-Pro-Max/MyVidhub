@@ -39,6 +39,9 @@ class MediaSummary {
     this.year,
     this.rating,
     this.poster,
+    this.fanart,
+    this.logo,
+    this.genres = const [],
   });
   final int id;
   final MediaKind kind;
@@ -47,6 +50,9 @@ class MediaSummary {
   final int? year;
   final double? rating;
   final String? poster;
+  final String? fanart;
+  final String? logo;
+  final List<String> genres;
   final int episodeCount;
   final int watchedCount;
 

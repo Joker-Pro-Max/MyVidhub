@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../ui/tokens.dart';
+
 /// 本地 / 网络图片，按显示尺寸降采样解码（4K 海报也不卡），淡入，失败显示占位。
 class MediaImage extends StatelessWidget {
   const MediaImage({
@@ -38,22 +40,23 @@ class MediaImage extends StatelessWidget {
       filterQuality: FilterQuality.medium,
       errorBuilder: (_, _, _) => ph,
       frameBuilder: (context, child, frame, wasSync) {
+        // 缓存命中直接显示；加载中只显示占位；首帧到达后淡入（占位随之移除）
         if (wasSync) return child;
-        return Stack(fit: StackFit.passthrough, children: [
-          ph,
-          AnimatedOpacity(
-            opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            child: child,
-          ),
-        ]);
+        if (frame == null) return ph;
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: Motion.of(context, Motion.base),
+          curve: Motion.curve,
+          builder: (_, v, c) => Opacity(opacity: v, child: c),
+          child: child,
+        );
       },
     );
   }
 }
 
-/// 没有海报时的占位：标题首字 + 柔和渐变（每个标题颜色固定）。
+/// 没有海报时的占位：安静的石墨色，轻微带一点按标题固定的色相，
+/// 大尺寸排出片名，小尺寸（头像）只显示首字。
 class PosterPlaceholder extends StatelessWidget {
   const PosterPlaceholder({super.key, required this.title, this.icon});
   final String title;
@@ -62,31 +65,40 @@ class PosterPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hue = (title.hashCode % 360).abs().toDouble();
-    final c1 = HSLColor.fromAHSL(1, hue, 0.28, 0.24).toColor();
-    final c2 = HSLColor.fromAHSL(1, (hue + 40) % 360, 0.32, 0.14).toColor();
+    final c1 = HSLColor.fromAHSL(1, hue, 0.10, 0.17).toColor();
+    final c2 = HSLColor.fromAHSL(1, hue, 0.08, 0.11).toColor();
     final glyph = title.trim().isEmpty ? '?' : title.trim().characters.first.toUpperCase();
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [c1, c2],
-        ),
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [c1, c2]),
       ),
-      child: Center(
-        child: icon != null
-            ? Icon(icon, color: Colors.white38, size: 32)
-            : LayoutBuilder(
-                builder: (context, c) => Text(
-                  glyph,
-                  style: TextStyle(
-                    fontSize: c.maxWidth * 0.36,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.55),
-                  ),
-                ),
+      child: LayoutBuilder(builder: (context, c) {
+        if (icon != null) {
+          return Center(child: Icon(icon, color: Palette.text3, size: 28));
+        }
+        if (c.maxWidth < 96) {
+          return Center(
+            child: Text(glyph,
+                style: TypeScale.title.copyWith(fontSize: c.maxWidth * 0.36, color: Palette.text3)),
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.all(c.maxWidth * 0.1),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Text(
+              title,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TypeScale.headline.copyWith(
+                fontSize: (c.maxWidth * 0.11).clamp(12.0, 22.0),
+                color: Palette.text2,
+                height: 1.25,
               ),
-      ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }

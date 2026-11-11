@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../ui/tokens.dart';
+
 import 'player_session.dart';
 import 'track_labels.dart';
 
 enum PlayerPanel { subtitle, audio, speed, display, episodes }
 
-const _accent = Color(0xFFF2B33D);
+const _accent = Palette.light;
 
 /// 右侧滑出的设置面板（全屏播放时不离开播放页面）。
 class PanelHost extends StatelessWidget {
@@ -34,7 +36,7 @@ class PanelHost extends StatelessWidget {
         right: open ? 0 : -width - 20,
         width: width,
         child: Material(
-          color: const Color(0xF2121418),
+          color: Palette.surface1.withValues(alpha: 0.96),
           child: SafeArea(
             left: false,
             child: panel == null

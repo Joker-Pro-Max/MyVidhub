@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_shell.dart';
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
-import '../../widgets/poster_card.dart';
+import '../../ui/components.dart';
+import '../../ui/tokens.dart';
 import '../../widgets/media_image.dart';
+import '../../widgets/poster_card.dart';
 import '../detail/detail_page.dart';
-import '../player/play_item.dart';
-import '../player/player_page.dart';
+import '../player/play_actions.dart';
 import 'empty_library.dart';
 
 class HomePage extends ConsumerWidget {
@@ -19,45 +21,282 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sources = ref.watch(sourcesProvider);
     final scan = ref.watch(scanProvider);
+    final insets = ShellInsets.of(context);
     if (sources.isEmpty) return const EmptyLibrary();
 
-    final movies = ref.watch(itemsProvider(
-        (kind: MediaKind.movie, sort: SortOrder.added, genre: null, limit: 24)));
-    final shows = ref.watch(itemsProvider(
-        (kind: MediaKind.show, sort: SortOrder.added, genre: null, limit: 24)));
+    final movies = ref.watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.added, genre: null, limit: 24)));
+    final shows = ref.watch(itemsProvider((kind: MediaKind.show, sort: SortOrder.added, genre: null, limit: 24)));
     final cont = ref.watch(continueWatchingProvider);
-    final topRated = ref.watch(itemsProvider(
-        (kind: MediaKind.movie, sort: SortOrder.rating, genre: null, limit: 24)))
+    final topRated = ref
+        .watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.rating, genre: null, limit: 24)))
         .where((m) => m.rating != null)
         .toList();
+
+    final heroes = _heroEntries(cont, movies, shows);
+    final g = FormFactor.of(context).gutter;
 
     return CustomScrollView(
       key: const PageStorageKey('home'),
       slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-            child: Text('首页',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+        if (heroes.isNotEmpty)
+          SliverToBoxAdapter(child: _Hero(entries: heroes))
+        else
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(g, insets.top + 8, g, 24),
+              child: const Text('首页', style: TypeScale.largeTitle),
+            ),
           ),
-        ),
-        if (scan.running) const SliverToBoxAdapter(child: ScanBanner()),
+        if (scan.running) SliverToBoxAdapter(child: ScanBanner(padding: EdgeInsets.fromLTRB(g, 8, g, 24))),
         if (movies.isEmpty && shows.isEmpty && !scan.running)
-          const SliverFillRemaining(
+          SliverFillRemaining(
             hasScrollBody: false,
-            child: Center(child: Text('媒体库为空：文件夹中没有识别到视频文件')),
+            child: Center(
+              child: Text('文件夹里还没有识别到视频', style: TypeScale.body.copyWith(color: Palette.text2)),
+            ),
           ),
         if (cont.isNotEmpty) _ContinueShelf(items: cont),
         if (movies.isNotEmpty)
           _Shelf(title: '最近添加的电影', items: movies, onMore: () => onSeeAll(MediaKind.movie)),
-        if (shows.isNotEmpty)
-          _Shelf(title: '最近添加的剧集', items: shows, onMore: () => onSeeAll(MediaKind.show)),
-        if (topRated.length >= 3)
-          _Shelf(title: '高分电影', items: topRated, onMore: () => onSeeAll(MediaKind.movie)),
-        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        if (shows.isNotEmpty) _Shelf(title: '最近添加的剧集', items: shows, onMore: () => onSeeAll(MediaKind.show)),
+        if (topRated.length >= 3) _Shelf(title: '高分电影', items: topRated, onMore: () => onSeeAll(MediaKind.movie)),
+        SliverToBoxAdapter(child: SizedBox(height: insets.bottom)),
       ],
     );
   }
+
+  /// 顶部大图：先放"继续观看"，再放最近添加里有剧照的，最多 5 个。
+  static List<_HeroEntry> _heroEntries(List<ContinueItem> cont, List<MediaSummary> movies, List<MediaSummary> shows) {
+    final out = <_HeroEntry>[];
+    final seen = <int>{};
+    for (final c in cont) {
+      if (c.fanart == null || !seen.add(c.itemId)) continue;
+      out.add(_HeroEntry(
+        itemId: c.itemId,
+        title: c.title,
+        backdrop: c.fanart!,
+        overline: '继续观看',
+        meta: c.episodeLabel ?? '',
+        progress: c.positionMs > 0 ? c.fraction : null,
+        remaining: c.durationMs > 0 ? Duration(milliseconds: c.durationMs - c.positionMs) : null,
+        path: c.path,
+      ));
+      if (out.length >= 2) break;
+    }
+    final recent = [...movies, ...shows].where((m) => m.fanart != null).toList();
+    for (final m in recent) {
+      if (out.length >= 5) break;
+      if (!seen.add(m.id)) continue;
+      out.add(_HeroEntry(
+        itemId: m.id,
+        title: m.title,
+        backdrop: m.fanart!,
+        logo: m.logo,
+        overline: m.kind == MediaKind.movie ? '最近添加 · 电影' : '最近添加 · 剧集',
+        meta: [
+          if (m.year != null) '${m.year}',
+          ...m.genres.take(2),
+          if (m.rating != null) '★ ${m.rating!.toStringAsFixed(1)}',
+        ].join('  ·  '),
+      ));
+    }
+    return out;
+  }
+}
+
+class _HeroEntry {
+  const _HeroEntry({
+    required this.itemId,
+    required this.title,
+    required this.backdrop,
+    required this.overline,
+    required this.meta,
+    this.logo,
+    this.progress,
+    this.remaining,
+    this.path,
+  });
+  final int itemId;
+  final String title;
+  final String backdrop;
+  final String? logo;
+  final String overline;
+  final String meta;
+  final double? progress;
+  final Duration? remaining;
+  final String? path;
+}
+
+class _Hero extends ConsumerStatefulWidget {
+  const _Hero({required this.entries});
+  final List<_HeroEntry> entries;
+
+  @override
+  ConsumerState<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends ConsumerState<_Hero> {
+  final _page = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final ff = FormFactor.of(context);
+    final height = ff.isPhone
+        ? (size.width * 1.25).clamp(420.0, 560.0)
+        : (size.height * 0.72).clamp(440.0, 760.0);
+    final entries = widget.entries;
+
+    return SizedBox(
+      height: height,
+      child: Stack(children: [
+        PageView.builder(
+          controller: _page,
+          itemCount: entries.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (context, i) => _HeroPage(entry: entries[i], width: size.width),
+        ),
+        if (entries.length > 1)
+          Positioned(
+            right: ff.gutter,
+            bottom: 28,
+            child: Row(children: [
+              for (var i = 0; i < entries.length; i++)
+                Pressable(
+                  onTap: () => _page.animateToPage(i,
+                      duration: Motion.of(context, Motion.base), curve: Motion.curve),
+                  radius: 6,
+                  hoverOverlay: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+                    child: AnimatedContainer(
+                      duration: Motion.of(context, Motion.fast),
+                      width: i == _index ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == _index ? Palette.light : Palette.glow(0.3),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+class _HeroPage extends ConsumerWidget {
+  const _HeroPage({required this.entry, required this.width});
+  final _HeroEntry entry;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ff = FormFactor.of(context);
+    final g = ff.gutter;
+    final e = entry;
+
+    return Stack(fit: StackFit.expand, children: [
+      MediaImage(path: e.backdrop, decodeWidth: width, alignment: const Alignment(0, -0.3)),
+      // 左侧压暗，保证文字可读
+      if (!ff.isPhone)
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              stops: const [0, 0.6],
+              colors: [Palette.shade(0.7), Palette.shade(0)],
+            ),
+          ),
+        ),
+      // 底部融入背景
+      DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0.35, 0.78, 0.97],
+            colors: [Palette.shade(0), Palette.shade(0.72), Palette.bg],
+          ),
+        ),
+      ),
+      Positioned(
+        left: g,
+        right: g,
+        bottom: 28,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(e.overline.toUpperCase(), style: TypeScale.overline.copyWith(color: Palette.text2)),
+            const SizedBox(height: 10),
+            if (e.logo != null)
+              SizedBox(
+                height: ff.isPhone ? 72 : 104,
+                width: ff.isPhone ? 260 : 400,
+                child: MediaImage(
+                  path: e.logo,
+                  decodeWidth: 400,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.bottomLeft,
+                  placeholder: _title(ff),
+                ),
+              )
+            else
+              _title(ff),
+            if (e.meta.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(e.meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TypeScale.callout.copyWith(color: Palette.text2, fontSize: 15)),
+            ],
+            if (e.progress != null) ...[
+              const SizedBox(height: 14),
+              Row(children: [
+                SizedBox(width: 180, child: ProgressHairline(value: e.progress!)),
+                const SizedBox(width: 12),
+                if (e.remaining != null)
+                  Text(
+                    e.remaining!.inMinutes < 1 ? '即将看完' : '剩余 ${e.remaining!.inMinutes} 分钟',
+                    style: TypeScale.caption,
+                  ),
+              ]),
+            ],
+            const SizedBox(height: 20),
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              PillButton(
+                label: e.progress != null ? '继续播放' : '播放',
+                icon: Icons.play_arrow_rounded,
+                onPressed: () => playItem(context, ref, e.itemId, path: e.path),
+              ),
+              PillButton(
+                label: '详情',
+                primary: false,
+                onPressed: () => DetailPage.open(context, e.itemId),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _title(FormFactor ff) => Text(
+        entry.title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: ff.isPhone ? TypeScale.largeTitle.copyWith(fontSize: 32) : TypeScale.display.copyWith(fontSize: 48),
+      );
 }
 
 class _Shelf extends StatelessWidget {
@@ -70,31 +309,29 @@ class _Shelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = PosterGrid.targetWidth(MediaQuery.sizeOf(context).width);
-    return SliverToBoxAdapter(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
-          child: Row(children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const Spacer(),
-            TextButton(onPressed: onMore, child: const Text('全部')),
-          ]),
-        ),
-        SizedBox(
-          height: PosterCard.heightFor(width) + 8,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 16),
-            itemBuilder: (context, i) => PosterCard(
-              item: items[i],
-              width: width,
-              onTap: () => DetailPage.open(context, items[i].id),
+    final g = FormFactor.of(context).gutter;
+    return SliverPadding(
+      padding: const EdgeInsets.only(bottom: 36),
+      sliver: SliverToBoxAdapter(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SectionHeader(title: title, onMore: onMore),
+          SizedBox(
+            height: PosterCard.heightFor(width) + 16,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              padding: EdgeInsets.fromLTRB(g, 6, g, 10),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 18),
+              itemBuilder: (context, i) => PosterCard(
+                item: items[i],
+                width: width,
+                onTap: () => DetailPage.open(context, items[i].id),
+              ),
             ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 }
@@ -103,146 +340,141 @@ class _ContinueShelf extends ConsumerWidget {
   const _ContinueShelf({required this.items});
   final List<ContinueItem> items;
 
-  void _play(BuildContext context, WidgetRef ref, ContinueItem c) {
-    final db = ref.read(dbProvider);
-    if (c.kind == MediaKind.movie) {
-      final d = db.detail(c.itemId);
-      if (d != null) PlayerPage.open(context, ref, movieQueue(d, c.path));
-    } else {
-      final queue = showQueue(db, c.itemId, c.title);
-      PlayerPage.open(context, ref, queue, queue.indexWhere((q) => q.path == c.path).clamp(0, queue.length));
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final screenW = MediaQuery.sizeOf(context).width;
-    final w = screenW < 600 ? 240.0 : 300.0;
-    final theme = Theme.of(context);
-    return SliverToBoxAdapter(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
-          child: Text('继续观看', style: theme.textTheme.titleLarge),
-        ),
-        SizedBox(
-          height: w * 9 / 16 + 52,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 16),
-            itemBuilder: (context, i) {
-              final c = items[i];
-              final left = c.durationMs > 0 ? Duration(milliseconds: c.durationMs - c.positionMs) : null;
-              return SizedBox(
+    final ff = FormFactor.of(context);
+    final w = ff.isPhone ? 260.0 : 320.0;
+    return SliverPadding(
+      padding: const EdgeInsets.only(bottom: 36),
+      sliver: SliverToBoxAdapter(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SectionHeader(title: '继续观看'),
+          SizedBox(
+            height: w * 9 / 16 + 58,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              padding: EdgeInsets.symmetric(horizontal: ff.gutter),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 18),
+              itemBuilder: (context, i) => _ContinueCard(
+                item: items[i],
                 width: w,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => _play(context, ref, c),
-                  onLongPress: () => DetailPage.open(context, c.itemId),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: SizedBox(
-                        width: w,
-                        height: w * 9 / 16,
-                        child: Stack(fit: StackFit.expand, children: [
-                          MediaImage(
-                            path: c.fanart ?? c.poster,
-                            decodeWidth: w,
-                            placeholder: PosterPlaceholder(title: c.title),
-                          ),
-                          const DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [Colors.transparent, Colors.black54],
-                              ),
-                            ),
-                          ),
-                          Center(
-                            child: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 30),
-                            ),
-                          ),
-                          if (left != null && c.positionMs > 0)
-                            Positioned(
-                              right: 8,
-                              bottom: 10,
-                              child: Text(left.inMinutes < 1 ? '即将看完' : '剩余 ${left.inMinutes} 分钟',
-                                  style: const TextStyle(color: Colors.white, fontSize: 12)),
-                            ),
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: LinearProgressIndicator(
-                              value: c.fraction,
-                              minHeight: 4,
-                              color: theme.colorScheme.primary,
-                              backgroundColor: Colors.white24,
-                            ),
-                          ),
-                        ]),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(c.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                    if (c.episodeLabel != null)
-                      Text(c.episodeLabel!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  ]),
-                ),
-              );
-            },
+                onTap: () => playItem(context, ref, items[i].itemId, path: items[i].path),
+                onLongPress: () => DetailPage.open(context, items[i].itemId),
+              ),
+            ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 }
 
+class _ContinueCard extends StatelessWidget {
+  const _ContinueCard({required this.item, required this.width, required this.onTap, required this.onLongPress});
+  final ContinueItem item;
+  final double width;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = item;
+    final left = c.durationMs > 0 ? Duration(milliseconds: c.durationMs - c.positionMs) : null;
+    return SizedBox(
+      width: width,
+      child: Pressable(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        radius: Radii.card,
+        hoverOverlay: false,
+        semanticLabel: '继续播放 ${c.title}',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: width,
+            height: width * 9 / 16,
+            foregroundDecoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.card),
+              border: Border.all(color: Palette.hairline),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Radii.card),
+              child: Stack(fit: StackFit.expand, children: [
+                MediaImage(
+                  path: c.fanart ?? c.poster,
+                  decodeWidth: width,
+                  placeholder: PosterPlaceholder(title: c.title),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.45, 1],
+                      colors: [Palette.shade(0), Palette.shade(0.8)],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (left != null && c.positionMs > 0)
+                      Text(left.inMinutes < 1 ? '即将看完' : '剩余 ${left.inMinutes} 分钟',
+                          style: TypeScale.caption.copyWith(color: Palette.text)),
+                    if (c.positionMs > 0) ...[
+                      const SizedBox(height: 8),
+                      ProgressHairline(value: c.fraction),
+                    ],
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TypeScale.callout),
+          if (c.episodeLabel != null) ...[
+            const SizedBox(height: 2),
+            Text(c.episodeLabel!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TypeScale.caption),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// 扫描进度：一行安静的状态，不用卡片。
 class ScanBanner extends ConsumerWidget {
-  const ScanBanner({super.key, this.padding = const EdgeInsets.fromLTRB(20, 4, 20, 8)});
+  const ScanBanner({super.key, this.padding = EdgeInsets.zero});
   final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scan = ref.watch(scanProvider);
-    final theme = Theme.of(context);
     return Padding(
       padding: padding,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(children: [
-            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('正在扫描媒体库 · 已发现 ${scan.found} 个条目', style: theme.textTheme.bodyMedium),
-                if (scan.dir != null)
-                  Text(scan.dir!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              ]),
-            ),
-            TextButton(onPressed: () => ref.read(scanProvider.notifier).cancel(), child: const Text('取消')),
+      child: Row(children: [
+        const Spinner(),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('正在扫描媒体库 · 已发现 ${scan.found} 个', style: TypeScale.callout),
+            if (scan.dir != null)
+              Text(scan.dir!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TypeScale.caption.copyWith(color: Palette.text3)),
           ]),
         ),
-      ),
+        PillButton(
+          label: '取消',
+          primary: false,
+          compact: true,
+          onPressed: () => ref.read(scanProvider.notifier).cancel(),
+        ),
+      ]),
     );
   }
 }

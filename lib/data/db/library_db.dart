@@ -261,7 +261,7 @@ class LibraryDb {
   // ------------------------------------------------------------ 查询
 
   static const _summaryCols = '''i.id, i.kind, i.title, i.original_title, i.year, i.rating,
-      i.poster, i.added_at,
+      i.poster, i.fanart, i.logo, i.genres, i.added_at,
       (SELECT COUNT(*) FROM episodes e WHERE e.item_id = i.id) AS episode_count,
       (SELECT COUNT(*) FROM playback_state ps WHERE ps.finished = 1 AND ps.path IN
         (SELECT path FROM files WHERE item_id = i.id
@@ -504,6 +504,9 @@ class LibraryDb {
         year: r['year'] as int?,
         rating: (r['rating'] as num?)?.toDouble(),
         poster: r['poster'] as String?,
+        fanart: r['fanart'] as String?,
+        logo: r['logo'] as String?,
+        genres: _split(r['genres']),
         episodeCount: r['episode_count'] as int,
         watchedCount: r['watched_count'] as int,
         progress: (r['progress'] as num?)?.toDouble(),

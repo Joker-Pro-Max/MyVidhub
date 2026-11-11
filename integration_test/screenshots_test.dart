@@ -97,7 +97,7 @@ void main() {
       await tester.tap(find.text('电影').last);
       await shot(tester, '${entry.key}_2_movies');
 
-      await tester.scrollUntilVisible(find.text('星际穿越'), 300,
+      await tester.scrollUntilVisible(find.text('星际穿越').first, 300,
           scrollable: find.descendant(
               of: find.byWidgetPredicate((w) => w is LibraryPage && w.kind == MediaKind.movie),
               matching: find.byType(Scrollable)).first);
@@ -117,7 +117,7 @@ void main() {
       await tester.tap(find.byTooltip('返回'));
       await settle(tester);
 
-      await tester.tap(find.text('设置').last);
+      await tester.tap(find.text('设置').evaluate().isNotEmpty ? find.text('设置').last : find.byTooltip('设置'));
       await shot(tester, '${entry.key}_5_settings');
     });
   }

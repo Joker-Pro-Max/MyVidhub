@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,12 +8,32 @@ import '../features/home/home_page.dart';
 import '../features/library/library_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/update_ui.dart';
+import '../ui/components.dart';
+import '../ui/tokens.dart';
 import 'update_controller.dart';
 
+/// 页面内容需要为浮动导航预留的空间（内容可以从导航下方滚过）。
+class ShellInsets extends InheritedWidget {
+  const ShellInsets({super.key, required this.top, required this.bottom, required super.child});
+
+  final double top;
+  final double bottom;
+
+  static ShellInsets of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellInsets>() ??
+      ShellInsets(
+        top: MediaQuery.paddingOf(context).top + 16,
+        bottom: MediaQuery.paddingOf(context).bottom + 16,
+        child: const SizedBox.shrink(),
+      );
+
+  @override
+  bool updateShouldNotify(ShellInsets old) => old.top != top || old.bottom != bottom;
+}
+
 /// 自适应外壳：
-/// - 手机（< 600dp）：底部导航
-/// - 平板（600–1200dp）：左侧 NavigationRail
-/// - 桌面 / 大屏平板横屏（≥ 1200dp）：展开的侧边栏
+/// - 平板 / 桌面：顶部浮动的毛玻璃标签胶囊（首页 / 电影 / 剧集），设置收在右上角齿轮
+/// - 手机：底部毛玻璃导航条（图标 + 文字，无指示胶囊）
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
@@ -22,6 +44,13 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
 
+  static const _tabs = [
+    (icon: Icons.home_outlined, selected: Icons.home_rounded, label: '首页'),
+    (icon: Icons.movie_outlined, selected: Icons.movie_rounded, label: '电影'),
+    (icon: Icons.tv_outlined, selected: Icons.tv_rounded, label: '剧集'),
+    (icon: Icons.settings_outlined, selected: Icons.settings_rounded, label: '设置'),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -30,13 +59,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (mounted) ref.read(updateProvider.notifier).autoCheck();
     });
   }
-
-  static const _destinations = [
-    (icon: Icons.home_outlined, selected: Icons.home_rounded, label: '首页'),
-    (icon: Icons.movie_outlined, selected: Icons.movie_rounded, label: '电影'),
-    (icon: Icons.tv_outlined, selected: Icons.tv_rounded, label: '剧集'),
-    (icon: Icons.settings_outlined, selected: Icons.settings_rounded, label: '设置'),
-  ];
 
   void _select(int i) => setState(() => _index = i);
 
@@ -48,7 +70,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         UpdateDialog.show(context);
       }
     });
-    final width = MediaQuery.sizeOf(context).width;
+
+    final ff = FormFactor.of(context);
+    final pad = MediaQuery.paddingOf(context);
     final pages = IndexedStack(
       index: _index,
       children: [
@@ -59,56 +83,189 @@ class _AppShellState extends ConsumerState<AppShell> {
       ],
     );
 
-    if (width < 600) {
+    if (ff.isPhone) {
+      const barH = 62.0;
       return Scaffold(
-        body: SafeArea(bottom: false, child: pages),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: _select,
-          height: 64,
-          destinations: [
-            for (final d in _destinations)
-              NavigationDestination(icon: Icon(d.icon), selectedIcon: Icon(d.selected), label: d.label),
-          ],
-        ),
+        extendBody: true,
+        body: ShellInsets(top: pad.top + 12, bottom: pad.bottom + barH + 16, child: pages),
+        bottomNavigationBar: _PhoneBar(index: _index, onSelect: _select, height: barH),
       );
     }
 
-    final extended = width >= 1200;
-    final theme = Theme.of(context);
+    const navH = 64.0;
     return Scaffold(
-      body: SafeArea(
-        child: Row(children: [
-          NavigationRail(
-            selectedIndex: _index,
-            onDestinationSelected: _select,
-            extended: extended,
-            minExtendedWidth: 200,
-            labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-            groupAlignment: -0.9,
-            leading: Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 20),
-              child: extended
-                  ? Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.play_circle_fill_rounded, color: theme.colorScheme.primary, size: 32),
-                      const SizedBox(width: 10),
-                      Text('MyVidhub',
-                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                    ])
-                  : Icon(Icons.play_circle_fill_rounded, color: theme.colorScheme.primary, size: 36),
-            ),
-            destinations: [
-              for (final d in _destinations)
-                NavigationRailDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selected),
-                  label: Text(d.label),
+      body: Stack(children: [
+        ShellInsets(top: pad.top + navH + 8, bottom: pad.bottom + 24, child: pages),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _TopBar(index: _index, onSelect: _select, height: navH, gutter: ff.gutter),
+        ),
+      ]),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.index, required this.onSelect, required this.height, required this.gutter});
+
+  final int index;
+  final ValueChanged<int> onSelect;
+  final double height;
+  final double gutter;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top;
+    return DecoratedBox(
+      // 让滚到导航下方的内容渐隐，文字始终可读
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Palette.shade(0.78), Palette.shade(0)],
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(gutter, top + 10, gutter - 4, 18),
+        child: SizedBox(
+          height: height - 18,
+          child: Row(children: [
+            const _Wordmark(),
+            const Spacer(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Palette.surface1.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Palette.hairline),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (var i = 0; i < 3; i++)
+                      _TopTab(label: _AppShellState._tabs[i].label, selected: index == i, onTap: () => onSelect(i)),
+                  ]),
                 ),
-            ],
+              ),
+            ),
+            const Spacer(),
+            RoundIconButton(
+              icon: Icons.settings_outlined,
+              tooltip: '设置',
+              selected: index == 3,
+              overArtwork: true,
+              size: 42,
+              onPressed: () => onSelect(3),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(color: Palette.light, borderRadius: BorderRadius.circular(7)),
+          child: const Icon(Icons.play_arrow_rounded, size: 20, color: Palette.onLight),
+        ),
+        const SizedBox(width: 10),
+        Text('MyVidhub', style: TypeScale.headline.copyWith(fontSize: 17, letterSpacing: -0.2)),
+      ]);
+}
+
+class _TopTab extends StatelessWidget {
+  const _TopTab({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Pressable(
+        onTap: onTap,
+        radius: 20,
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.fast),
+          curve: Motion.curve,
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? Palette.light : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
           ),
-          VerticalDivider(width: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-          Expanded(child: pages),
-        ]),
+          child: Text(
+            label,
+            style: TypeScale.callout.copyWith(
+              fontSize: 15,
+              color: selected ? Palette.onLight : Palette.text2,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ),
+      );
+}
+
+class _PhoneBar extends StatelessWidget {
+  const _PhoneBar({required this.index, required this.onSelect, required this.height});
+  final int index;
+  final ValueChanged<int> onSelect;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          height: height + bottom,
+          padding: EdgeInsets.only(bottom: bottom),
+          decoration: BoxDecoration(
+            color: Palette.surface1.withValues(alpha: 0.82),
+            border: const Border(top: BorderSide(color: Palette.hairline)),
+          ),
+          child: Row(children: [
+            for (var i = 0; i < _AppShellState._tabs.length; i++)
+              Expanded(
+                child: Pressable(
+                  onTap: () => onSelect(i),
+                  radius: 12,
+                  hoverOverlay: false,
+                  child: SizedBox(
+                    height: height,
+                    width: double.infinity,
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(
+                        index == i ? _AppShellState._tabs[i].selected : _AppShellState._tabs[i].icon,
+                        size: 24,
+                        color: index == i ? Palette.light : Palette.text3,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _AppShellState._tabs[i].label,
+                        style: TypeScale.caption.copyWith(
+                          fontSize: 11,
+                          color: index == i ? Palette.light : Palette.text3,
+                          fontWeight: index == i ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
       ),
     );
   }

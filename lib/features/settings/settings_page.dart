@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_shell.dart';
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
+import '../../ui/components.dart';
+import '../../ui/tokens.dart';
 import '../home/home_page.dart';
 import 'add_source.dart';
 import 'update_ui.dart';
@@ -14,107 +17,103 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sources = ref.watch(sourcesProvider);
     final scan = ref.watch(scanProvider);
-    final theme = Theme.of(context);
+    final db = ref.watch(dbProvider);
+    ref.watch(libraryRevisionProvider);
+    final insets = ShellInsets.of(context);
+    final g = FormFactor.of(context).gutter;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+      padding: EdgeInsets.fromLTRB(g, insets.top + 8, g, insets.bottom),
       children: [
-        Text('设置', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 20),
-        Row(children: [
-          Text('媒体库文件夹', style: theme.textTheme.titleMedium),
-          const Spacer(),
-          if (sources.isNotEmpty)
-            TextButton.icon(
-              onPressed: scan.running ? null : () => ref.read(scanProvider.notifier).scanAll(),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('全部重新扫描'),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        if (scan.running) const ScanBanner(padding: EdgeInsets.only(bottom: 8)),
-        Card(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: [
-            for (final s in sources) _SourceTile(source: s, scanning: scan.sourceId == s.id),
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined),
-              title: const Text('添加文件夹'),
-              subtitle: const Text('本地磁盘、U 盘、SD 卡'),
-              onTap: () => addLocalFolder(context, ref),
-            ),
-            ListTile(
-              enabled: false,
-              leading: const Icon(Icons.lan_outlined),
-              title: const Text('添加 SMB / WebDAV'),
-              subtitle: const Text('即将支持（M4）'),
-            ),
-          ]),
-        ),
-        if (scan.lastMessage != null && !scan.running) ...[
-          const SizedBox(height: 10),
-          Text(scan.lastMessage!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
-        ],
-        const SizedBox(height: 28),
-        Text('版本与更新', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        const UpdateSection(),
-        const SizedBox(height: 28),
-        Text('关于', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Column(children: [
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('媒体库'),
-              subtitle: Text('电影 ${ref.watch(dbProvider).count(MediaKind.movie)} 部 · '
-                  '剧集 ${ref.watch(dbProvider).count(MediaKind.show)} 部'),
-            ),
-            const ListTile(
-              leading: Icon(Icons.description_outlined),
-              title: Text('支持的元数据'),
-              subtitle: Text('Kodi / Jellyfin / Emby NFO，poster / fanart / clearlogo / 季海报 / 集缩略图'),
-            ),
-          ]),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('设置', style: TypeScale.largeTitle),
+              const SizedBox(height: 28),
+              if (scan.running) ...[
+                const ScanBanner(padding: EdgeInsets.symmetric(horizontal: 4)),
+                const SizedBox(height: 20),
+              ],
+              GroupedList(
+                header: '媒体库',
+                footer: !scan.running ? scan.lastMessage : null,
+                children: [
+                  for (final s in sources) _SourceRow(source: s, scanning: scan.sourceId == s.id),
+                  SettingRow(
+                    icon: Icons.create_new_folder_outlined,
+                    title: '添加文件夹',
+                    subtitle: '本地磁盘、U 盘、SD 卡',
+                    onTap: () => addLocalFolder(context, ref),
+                  ),
+                  if (sources.isNotEmpty)
+                    SettingRow(
+                      icon: Icons.refresh_rounded,
+                      title: '全部重新扫描',
+                      enabled: !scan.running,
+                      onTap: () => ref.read(scanProvider.notifier).scanAll(),
+                    ),
+                  const SettingRow(
+                    icon: Icons.lan_outlined,
+                    title: '添加 SMB / WebDAV',
+                    subtitle: '即将支持',
+                    enabled: false,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              const UpdateSection(),
+              const SizedBox(height: 32),
+              GroupedList(
+                header: '关于',
+                children: [
+                  SettingRow(
+                    icon: Icons.video_library_outlined,
+                    title: '片库',
+                    subtitle: '电影 ${db.count(MediaKind.movie)} 部 · 剧集 ${db.count(MediaKind.show)} 部',
+                  ),
+                  const SettingRow(
+                    icon: Icons.description_outlined,
+                    title: '支持的元数据',
+                    subtitle: 'Kodi / Jellyfin / Emby NFO，poster、fanart、clearlogo、季海报、集缩略图',
+                  ),
+                ],
+              ),
+            ]),
+          ),
         ),
       ],
     );
   }
 }
 
-class _SourceTile extends ConsumerWidget {
-  const _SourceTile({required this.source, required this.scanning});
+class _SourceRow extends ConsumerWidget {
+  const _SourceRow({required this.source, required this.scanning});
   final SourceRow source;
   final bool scanning;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final last = source.lastScanAt;
-    final subtitle = [
-      source.root,
-      '${source.itemCount} 个条目${last != null ? ' · 上次扫描 ${_fmt(last)}' : ''}',
-    ].join('\n');
-    return ListTile(
-      leading: const Icon(Icons.folder_outlined),
-      title: Text(source.name),
-      subtitle: Text(subtitle),
-      isThreeLine: true,
+    return SettingRow(
+      icon: Icons.folder_outlined,
+      title: source.name,
+      subtitle: '${source.root}\n${source.itemCount} 个条目${last != null ? ' · 上次扫描 ${_fmt(last)}' : ''}',
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        scanning
-            ? const Padding(
-                padding: EdgeInsets.all(12),
-                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
-              )
-            : IconButton(
-                tooltip: '重新扫描',
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: () => ref.read(scanProvider.notifier).scan(source.id),
-              ),
-        IconButton(
+        if (scanning)
+          const Padding(padding: EdgeInsets.all(9), child: Spinner())
+        else
+          RoundIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: '重新扫描',
+            size: 36,
+            onPressed: () => ref.read(scanProvider.notifier).scan(source.id),
+          ),
+        const SizedBox(width: 8),
+        RoundIconButton(
+          icon: Icons.remove_rounded,
           tooltip: '移除',
-          icon: const Icon(Icons.delete_outline),
+          size: 36,
           onPressed: scanning ? null : () => _confirmDelete(context, ref),
         ),
       ]),
@@ -126,10 +125,11 @@ class _SourceTile extends ConsumerWidget {
       context: context,
       builder: (c) => AlertDialog(
         title: Text('移除「${source.name}」？'),
-        content: const Text('只会从媒体库中移除索引，不会删除磁盘上的任何文件。'),
+        content: const Text('只会从片库里移除，不会删除磁盘上的任何文件。'),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('移除')),
+          PillButton(label: '取消', primary: false, compact: true, onPressed: () => Navigator.pop(c, false)),
+          PillButton(label: '移除', compact: true, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
     );

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_shell.dart';
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
+import '../../ui/components.dart';
+import '../../ui/tokens.dart';
 import '../../widgets/poster_card.dart';
 import '../detail/detail_page.dart';
 import '../home/empty_library.dart';
@@ -22,11 +25,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final items = ref.watch(
-        itemsProvider((kind: widget.kind, sort: _sort, genre: _genre, limit: null)));
+    final items = ref.watch(itemsProvider((kind: widget.kind, sort: _sort, genre: _genre, limit: null)));
     final genres = ref.watch(genresProvider(widget.kind));
     final hasSources = ref.watch(sourcesProvider).isNotEmpty;
+    final insets = ShellInsets.of(context);
+    final g = FormFactor.of(context).gutter;
     final label = widget.kind == MediaKind.movie ? '电影' : '剧集';
 
     if (!hasSources) return const EmptyLibrary();
@@ -36,45 +39,29 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 12, 4),
-            child: Row(children: [
-              Text(label, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+            padding: EdgeInsets.fromLTRB(g, insets.top + 8, g - 8, 16),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(label, style: TypeScale.largeTitle),
               const SizedBox(width: 10),
-              Text('${items.length}', style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              )),
-              const Spacer(),
-              PopupMenuButton<SortOrder>(
-                tooltip: '排序',
-                initialValue: _sort,
-                onSelected: (s) => setState(() => _sort = s),
-                itemBuilder: (_) => [
-                  for (final s in SortOrder.values) PopupMenuItem(value: s, child: Text(s.label)),
-                ],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.sort_rounded, size: 20),
-                    const SizedBox(width: 6),
-                    Text(_sort.label),
-                  ]),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('${items.length}', style: TypeScale.title.copyWith(color: Palette.text3)),
               ),
+              const Spacer(),
+              _SortMenu(value: _sort, onChanged: (s) => setState(() => _sort = s)),
             ]),
           ),
         ),
         if (genres.isNotEmpty)
           SliverToBoxAdapter(
-            child: SizedBox(
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                children: [
-                  _chip('全部', _genre == null, () => setState(() => _genre = null)),
-                  for (final g in genres)
-                    _chip(g, _genre == g, () => setState(() => _genre = _genre == g ? null : g)),
-                ],
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: FilterPills<String?>(
+                items: [null, ...genres],
+                selected: _genre,
+                label: (g) => g ?? '全部',
+                onSelect: (v) => setState(() => _genre = v),
+                padding: EdgeInsets.symmetric(horizontal: g - 4),
               ),
             ),
           ),
@@ -82,26 +69,49 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
-              child: Text(
-                ref.watch(scanProvider).running ? '正在扫描…' : '没有找到$label',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
+              child: ref.watch(scanProvider).running
+                  ? const Spinner(size: 24)
+                  : Text('没有找到$label', style: TypeScale.body.copyWith(color: Palette.text2)),
             ),
           )
         else
-          PosterGrid(items: items, onTap: (m) => DetailPage.open(context, m.id)),
+          PosterGrid(items: items, onTap: (m) => DetailPage.open(context, m.id), bottom: insets.bottom),
       ],
     );
   }
+}
 
-  Widget _chip(String label, bool selected, VoidCallback onTap) => Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: ChoiceChip(
-          label: Text(label),
-          selected: selected,
-          onSelected: (_) => onTap(),
-          showCheckmark: false,
-          visualDensity: VisualDensity.compact,
+class _SortMenu extends StatelessWidget {
+  const _SortMenu({required this.value, required this.onChanged});
+  final SortOrder value;
+  final ValueChanged<SortOrder> onChanged;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<SortOrder>(
+        tooltip: '排序',
+        initialValue: value,
+        onSelected: onChanged,
+        offset: const Offset(0, 44),
+        itemBuilder: (_) => [
+          for (final s in SortOrder.values)
+            PopupMenuItem(
+              value: s,
+              child: Row(children: [
+                SizedBox(
+                  width: 24,
+                  child: s == value ? const Icon(Icons.check_rounded, size: 18, color: Palette.light) : null,
+                ),
+                Text(s.label),
+              ]),
+            ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(value.label, style: TypeScale.callout.copyWith(color: Palette.text2)),
+            const SizedBox(width: 2),
+            const Icon(Icons.unfold_more_rounded, size: 18, color: Palette.text2),
+          ]),
         ),
       );
 }
