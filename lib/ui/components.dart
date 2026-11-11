@@ -326,11 +326,14 @@ class WatchedMark extends StatelessWidget {
 
 /// 分组列表（类似系统设置）。
 class GroupedList extends StatelessWidget {
-  const GroupedList({super.key, required this.children, this.header, this.footer});
+  const GroupedList({super.key, required this.children, this.header, this.footer, this.headerAction});
 
   final List<Widget> children;
   final String? header;
   final String? footer;
+
+  /// 分组标题右侧的小操作（如"全部重新扫描"）。
+  final Widget? headerAction;
 
   @override
   Widget build(BuildContext context) {
@@ -338,7 +341,7 @@ class GroupedList extends StatelessWidget {
     for (var i = 0; i < children.length; i++) {
       if (i > 0) {
         rows.add(const Padding(
-          padding: EdgeInsets.only(left: 56),
+          padding: EdgeInsets.only(left: 62),
           child: Divider(height: 1, thickness: 1, color: Palette.hairline),
         ));
       }
@@ -347,8 +350,11 @@ class GroupedList extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (header != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(header!.toUpperCase(), style: TypeScale.overline),
+          padding: EdgeInsets.fromLTRB(16, 0, headerAction != null ? 4 : 16, headerAction != null ? 2 : 8),
+          child: Row(children: [
+            Expanded(child: Text(header!.toUpperCase(), style: TypeScale.overline)),
+            ?headerAction,
+          ]),
         ),
       ClipRRect(
         borderRadius: BorderRadius.circular(Radii.group),
@@ -356,8 +362,8 @@ class GroupedList extends StatelessWidget {
       ),
       if (footer != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text(footer!, style: TypeScale.caption.copyWith(color: Palette.text3)),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Text(footer!, style: TypeScale.caption.copyWith(color: Palette.text3, height: 1.5)),
         ),
     ]);
   }
@@ -373,9 +379,15 @@ class SettingRow extends StatelessWidget {
     this.onTap,
     this.destructive = false,
     this.enabled = true,
+    this.leading,
+    this.subtitleMaxLines = 2,
   });
 
   final IconData icon;
+
+  /// 替换默认图标方块。
+  final Widget? leading;
+  final int subtitleMaxLines;
   final String title;
   final String? subtitle;
   final Widget? trailing;
@@ -393,14 +405,15 @@ class SettingRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
           child: Row(children: [
-            Icon(icon, size: 22, color: destructive ? Palette.danger : Palette.text2),
-            const SizedBox(width: 18),
+            leading ?? IconTile(icon: icon, color: destructive ? Palette.danger : Palette.text2),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(title, style: TypeScale.callout.copyWith(color: color, fontSize: 15)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
-                  Text(subtitle!, style: TypeScale.caption),
+                  Text(subtitle!,
+                      maxLines: subtitleMaxLines, overflow: TextOverflow.ellipsis, style: TypeScale.caption),
                 ],
               ]),
             ),
@@ -414,6 +427,54 @@ class SettingRow extends StatelessWidget {
     if (onTap == null || !enabled) return content;
     return Pressable(onTap: onTap, radius: 0, focusRing: true, child: content);
   }
+}
+
+/// 设置行左侧的图标方块。
+class IconTile extends StatelessWidget {
+  const IconTile({super.key, required this.icon, this.size = 32, this.filled = false, this.color = Palette.text2});
+  final IconData icon;
+  final double size;
+
+  /// true = 光色填充（主操作），false = 石墨灰。
+  final bool filled;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: filled ? Palette.light : Palette.surface3,
+          borderRadius: BorderRadius.circular(size * 0.28),
+        ),
+        child: Icon(icon, size: size * 0.58, color: filled ? Palette.onLight : color),
+      );
+}
+
+/// 小标签（如"即将支持"）。
+class TagLabel extends StatelessWidget {
+  const TagLabel(this.text, {super.key});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Palette.glow(0.16)),
+        ),
+        child: Text(text, style: TypeScale.caption.copyWith(fontSize: 11.5, color: Palette.text3)),
+      );
+}
+
+/// "刚刚 / 5 分钟前 / 3 小时前 / 昨天 / 11月2日"
+String relativeTime(DateTime t) {
+  final d = DateTime.now().difference(t);
+  if (d.inMinutes < 1) return '刚刚';
+  if (d.inHours < 1) return '${d.inMinutes} 分钟前';
+  if (d.inDays < 1) return '${d.inHours} 小时前';
+  if (d.inDays == 1) return '昨天';
+  return '${t.month}月${t.day}日';
 }
 
 /// 小号加载指示（不用 Material 默认粗环）。

@@ -1,12 +1,13 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/providers.dart';
+import '../../ui/components.dart';
+import 'folder_browser.dart';
 
 /// 选择本地文件夹作为媒体源，并立即开始扫描。
 Future<void> addLocalFolder(BuildContext context, WidgetRef ref) async {
@@ -16,13 +17,8 @@ Future<void> addLocalFolder(BuildContext context, WidgetRef ref) async {
     return;
   }
 
-  String? picked;
-  try {
-    picked = await FilePicker.getDirectoryPath(dialogTitle: '选择影视文件夹');
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('无法打开文件夹选择器：$e')));
-    return;
-  }
+  if (!context.mounted) return;
+  final picked = await FolderBrowser.pick(context);
   if (picked == null) return;
   final path = picked;
   if (!Directory(path).existsSync()) {
@@ -51,12 +47,13 @@ Future<bool> _ensureAndroidStorage(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
-      title: const Text('需要文件访问权限'),
-      content: const Text('为了读取视频文件、NFO 和海报图片，需要允许 MyVidhub 访问设备上的所有文件。\n\n'
-          '接下来会打开系统设置，请打开"允许访问所有文件"开关后返回。'),
+      title: const Text('允许读取文件'),
+      content: const Text('MyVidhub 需要读取视频、NFO 和海报图片。接下来会打开系统设置，'
+          '请打开「允许访问所有文件」后返回。只读取，不会修改任何文件。'),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('去授权')),
+        PillButton(label: '取消', primary: false, compact: true, onPressed: () => Navigator.pop(c, false)),
+        PillButton(label: '去设置', compact: true, onPressed: () => Navigator.pop(c, true)),
       ],
     ),
   );

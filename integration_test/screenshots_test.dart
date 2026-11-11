@@ -15,6 +15,7 @@ import 'package:myvidhub/app/providers.dart';
 import 'package:myvidhub/data/db/library_db.dart';
 import 'package:myvidhub/data/db/models.dart';
 import 'package:myvidhub/features/library/library_page.dart';
+import 'package:myvidhub/features/settings/folder_browser.dart';
 import 'package:myvidhub/data/sources/local_source.dart';
 import 'package:myvidhub/main.dart';
 import 'package:myvidhub/services/library_scanner.dart';
@@ -49,7 +50,7 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 80)));
       await tester.pump(const Duration(milliseconds: 50));
     }
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 15));
   }
 
   Future<void> shot(WidgetTester tester, String name) async {
@@ -119,6 +120,20 @@ void main() {
 
       await tester.tap(find.text('设置').evaluate().isNotEmpty ? find.text('设置').last : find.byTooltip('设置'));
       await shot(tester, '${entry.key}_5_settings');
+    });
+  }
+
+  for (final entry in {'tablet_landscape': const Size(1280, 800), 'phone': const Size(390, 844)}.entries) {
+    testWidgets('folder browser ${entry.key}', (tester) async {
+      await pumpApp(tester, entry.value);
+      await settle(tester);
+      final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+      nav.push(MaterialPageRoute<void>(builder: (_) => const FolderBrowser()));
+      await shot(tester, '${entry.key}_6_folder_roots');
+      nav.pop();
+      await settle(tester);
+      nav.push(MaterialPageRoute<void>(builder: (_) => FolderBrowser(initialPath: p.dirname(demoDir))));
+      await shot(tester, '${entry.key}_7_folder_browse');
     });
   }
 }

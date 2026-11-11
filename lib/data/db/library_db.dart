@@ -296,6 +296,8 @@ class LibraryDb {
         .toList();
   }
 
+  int episodeTotal() => _db.select('SELECT COUNT(*) AS n FROM episodes').first['n'] as int;
+
   int count(MediaKind kind) =>
       _db.select('SELECT COUNT(*) AS n FROM items WHERE kind = ?', [kind.name]).first['n'] as int;
 
