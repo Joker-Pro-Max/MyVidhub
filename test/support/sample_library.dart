@@ -16,7 +16,7 @@ void createSampleLibrary(String root) {
   f('电影/阿凡达 (2009)/阿凡达 (2009).nfo', '''<?xml version="1.0" encoding="UTF-8"?>
 <movie><title>阿凡达</title><originaltitle>Avatar</originaltitle><year>2009</year>
 <rating>7.9</rating><runtime>162</runtime><genre>动作</genre><genre>科幻</genre>
-<plot>潘多拉星球上的冒险。</plot><director>詹姆斯·卡梅隆</director>
+<plot>潘多拉星球上的冒险。</plot><director>詹姆斯·卡梅隆</director><set><name>测试合集</name></set>
 <actor><name>Sam Worthington</name><role>Jake</role></actor></movie>''');
   f('电影/阿凡达 (2009)/poster.jpg');
   f('电影/阿凡达 (2009)/fanart.jpg');
@@ -28,7 +28,7 @@ void createSampleLibrary(String root) {
   f('电影/盗梦空间 (2010)/Inception.2010.1080p.mkv');
   f('电影/盗梦空间 (2010)/Inception.2010.2160p.mkv');
   f('电影/盗梦空间 (2010)/movie.nfo',
-      '<movie><title>盗梦空间</title><year>2010</year><genre>科幻 / 悬疑</genre></movie>');
+      '<movie><title>盗梦空间</title><year>2010</year><genre>科幻 / 悬疑</genre><set>测试合集</set></movie>');
   f('电影/盗梦空间 (2010)/folder.jpg');
 
   // 同一目录多部电影，图片用 片名-poster.jpg

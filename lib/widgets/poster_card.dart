@@ -31,7 +31,10 @@ class _PosterCardState extends State<PosterCard> {
     final fast = Motion.of(context, Motion.fast);
     final sub = [
       if (item.year != null) '${item.year}',
-      if (item.kind == MediaKind.show && item.episodeCount > 0) '${item.episodeCount} 集',
+      if (item.unwatchedEpisodes > 0)
+        '剩 ${item.unwatchedEpisodes} 集'
+      else if (item.kind == MediaKind.show && item.episodeCount > 0)
+        '${item.episodeCount} 集',
     ].join(' · ');
 
     return Semantics(
@@ -91,6 +94,21 @@ class _PosterCardState extends State<PosterCard> {
                       ),
                       if (item.watched)
                         const Positioned(top: 8, right: 8, child: WatchedMark(size: 20)),
+                      if (item.unwatchedEpisodes > 0)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 22),
+                            height: 22,
+                            padding: const EdgeInsets.symmetric(horizontal: 7),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(color: Palette.light, borderRadius: BorderRadius.circular(11)),
+                            child: Text('${item.unwatchedEpisodes}',
+                                style: TypeScale.caption.copyWith(
+                                    color: Palette.onLight, fontWeight: FontWeight.w700, fontSize: 12)),
+                          ),
+                        ),
                       if (item.progress != null && !item.watched)
                         Positioned(
                           left: 8,

@@ -1,11 +1,13 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/models.dart';
 import '../features/home/home_page.dart';
 import '../features/library/library_page.dart';
+import '../features/search/search_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/update_ui.dart';
 import '../ui/components.dart';
@@ -49,7 +51,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     (icon: Icons.movie_outlined, selected: Icons.movie_rounded, label: '电影'),
     (icon: Icons.tv_outlined, selected: Icons.tv_rounded, label: '剧集'),
     (icon: Icons.settings_outlined, selected: Icons.settings_rounded, label: '设置'),
+    (icon: Icons.search_rounded, selected: Icons.search_rounded, label: '搜索'),
   ];
+
+  static const _settings = 3;
+  static const _search = 4;
+
+  /// 手机底栏的排列顺序（下标指向 _tabs）。
+  static const _phoneOrder = [0, 1, 2, _search, _settings];
 
   @override
   void initState() {
@@ -80,8 +89,15 @@ class _AppShellState extends ConsumerState<AppShell> {
         const LibraryPage(kind: MediaKind.movie),
         const LibraryPage(kind: MediaKind.show),
         const SettingsPage(),
+        SearchPage(active: _index == _search),
       ],
     );
+
+    // 桌面：⌘F / Ctrl+F 打开搜索
+    final shortcuts = <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () => _select(_search),
+      const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _select(_search),
+    };
 
     if (ff.isPhone) {
       const barH = 62.0;
@@ -93,16 +109,21 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
 
     const navH = 64.0;
-    return Scaffold(
-      body: Stack(children: [
-        ShellInsets(top: pad.top + navH + 8, bottom: pad.bottom + 24, child: pages),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: _TopBar(index: _index, onSelect: _select, height: navH, gutter: ff.gutter),
+    return CallbackShortcuts(
+      bindings: shortcuts,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            ShellInsets(top: pad.top + navH + 8, bottom: pad.bottom + 24, child: pages),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _TopBar(index: _index, onSelect: _select, height: navH, gutter: ff.gutter),
+            ),
+          ],
         ),
-      ]),
+      ),
     );
   }
 }
@@ -131,37 +152,51 @@ class _TopBar extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(gutter, top + 10, gutter - 4, 18),
         child: SizedBox(
           height: height - 18,
-          child: Row(children: [
-            const _Wordmark(),
-            const Spacer(),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Palette.surface1.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Palette.hairline),
+          child: Row(
+            children: [
+              const _Wordmark(),
+              const Spacer(),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Palette.surface1.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Palette.hairline),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < 3; i++)
+                          _TopTab(label: _AppShellState._tabs[i].label, selected: index == i, onTap: () => onSelect(i)),
+                      ],
+                    ),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    for (var i = 0; i < 3; i++)
-                      _TopTab(label: _AppShellState._tabs[i].label, selected: index == i, onTap: () => onSelect(i)),
-                  ]),
                 ),
               ),
-            ),
-            const Spacer(),
-            RoundIconButton(
-              icon: Icons.settings_outlined,
-              tooltip: '设置',
-              selected: index == 3,
-              overArtwork: true,
-              size: 42,
-              onPressed: () => onSelect(3),
-            ),
-          ]),
+              const Spacer(),
+              RoundIconButton(
+                icon: Icons.search_rounded,
+                tooltip: '搜索',
+                selected: index == _AppShellState._search,
+                overArtwork: true,
+                size: 42,
+                onPressed: () => onSelect(_AppShellState._search),
+              ),
+              const SizedBox(width: 10),
+              RoundIconButton(
+                icon: Icons.settings_outlined,
+                tooltip: '设置',
+                selected: index == _AppShellState._settings,
+                overArtwork: true,
+                size: 42,
+                onPressed: () => onSelect(_AppShellState._settings),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -172,16 +207,19 @@ class _Wordmark extends StatelessWidget {
   const _Wordmark();
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(color: Palette.light, borderRadius: BorderRadius.circular(7)),
-          child: const Icon(Icons.play_arrow_rounded, size: 20, color: Palette.onLight),
-        ),
-        const SizedBox(width: 10),
-        Text('MyVidhub', style: TypeScale.headline.copyWith(fontSize: 17, letterSpacing: -0.2)),
-      ]);
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(color: Palette.light, borderRadius: BorderRadius.circular(7)),
+        child: const Icon(Icons.play_arrow_rounded, size: 20, color: Palette.onLight),
+      ),
+      const SizedBox(width: 10),
+      Text('MyVidhub', style: TypeScale.headline.copyWith(fontSize: 17, letterSpacing: -0.2)),
+    ],
+  );
 }
 
 class _TopTab extends StatelessWidget {
@@ -192,28 +230,28 @@ class _TopTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Pressable(
-        onTap: onTap,
-        radius: 20,
-        child: AnimatedContainer(
-          duration: Motion.of(context, Motion.fast),
-          curve: Motion.curve,
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? Palette.light : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            label,
-            style: TypeScale.callout.copyWith(
-              fontSize: 15,
-              color: selected ? Palette.onLight : Palette.text2,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
+    onTap: onTap,
+    radius: 20,
+    child: AnimatedContainer(
+      duration: Motion.of(context, Motion.fast),
+      curve: Motion.curve,
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? Palette.light : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TypeScale.callout.copyWith(
+          fontSize: 15,
+          color: selected ? Palette.onLight : Palette.text2,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _PhoneBar extends StatelessWidget {
@@ -235,36 +273,41 @@ class _PhoneBar extends StatelessWidget {
             color: Palette.surface1.withValues(alpha: 0.82),
             border: const Border(top: BorderSide(color: Palette.hairline)),
           ),
-          child: Row(children: [
-            for (var i = 0; i < _AppShellState._tabs.length; i++)
-              Expanded(
-                child: Pressable(
-                  onTap: () => onSelect(i),
-                  radius: 12,
-                  hoverOverlay: false,
-                  child: SizedBox(
-                    height: height,
-                    width: double.infinity,
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(
-                        index == i ? _AppShellState._tabs[i].selected : _AppShellState._tabs[i].icon,
-                        size: 24,
-                        color: index == i ? Palette.light : Palette.text3,
+          child: Row(
+            children: [
+              for (final i in _AppShellState._phoneOrder)
+                Expanded(
+                  child: Pressable(
+                    onTap: () => onSelect(i),
+                    radius: 12,
+                    hoverOverlay: false,
+                    child: SizedBox(
+                      height: height,
+                      width: double.infinity,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            index == i ? _AppShellState._tabs[i].selected : _AppShellState._tabs[i].icon,
+                            size: 24,
+                            color: index == i ? Palette.light : Palette.text3,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _AppShellState._tabs[i].label,
+                            style: TypeScale.caption.copyWith(
+                              fontSize: 11,
+                              color: index == i ? Palette.light : Palette.text3,
+                              fontWeight: index == i ? FontWeight.w600 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _AppShellState._tabs[i].label,
-                        style: TypeScale.caption.copyWith(
-                          fontSize: 11,
-                          color: index == i ? Palette.light : Palette.text3,
-                          fontWeight: index == i ? FontWeight.w600 : FontWeight.w500,
-                        ),
-                      ),
-                    ]),
+                    ),
                   ),
                 ),
-              ),
-          ]),
+            ],
+          ),
         ),
       ),
     );

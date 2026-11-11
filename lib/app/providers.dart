@@ -25,13 +25,95 @@ final sourcesProvider = Provider<List<SourceRow>>((ref) {
   return ref.watch(dbProvider).sources();
 });
 
-typedef LibraryQuery = ({MediaKind kind, SortOrder sort, String? genre, int? limit});
+typedef LibraryQuery = ({MediaKind kind, SortOrder sort, String? genre, int? limit, WatchFilter filter});
 
 final itemsProvider = Provider.family<List<MediaSummary>, LibraryQuery>((ref, q) {
   ref.watch(libraryRevisionProvider);
   return ref
       .watch(dbProvider)
-      .listItems(kind: q.kind, sort: q.sort, genre: q.genre, limit: q.limit);
+      .listItems(kind: q.kind, sort: q.sort, genre: q.genre, limit: q.limit, filter: q.filter);
+});
+
+final favoritesProvider = Provider<List<MediaSummary>>((ref) {
+  ref.watch(libraryRevisionProvider);
+  return ref.watch(dbProvider).favorites(limit: 30);
+});
+
+final isFavoriteProvider = Provider.family<bool, int>((ref, id) {
+  ref.watch(libraryRevisionProvider);
+  return ref.watch(dbProvider).isFavorite(id);
+});
+
+typedef SearchResults = ({
+  List<MediaSummary> movies,
+  List<MediaSummary> shows,
+  List<PersonHit> people,
+  List<EpisodeHit> episodes,
+});
+
+final searchProvider = Provider.family<SearchResults, String>((ref, q) {
+  ref.watch(libraryRevisionProvider);
+  final db = ref.watch(dbProvider);
+  if (q.trim().isEmpty) return (movies: const [], shows: const [], people: const [], episodes: const []);
+  final items = db.searchItems(q);
+  return (
+    movies: [for (final m in items) if (m.kind == MediaKind.movie) m],
+    shows: [for (final m in items) if (m.kind == MediaKind.show) m],
+    people: db.searchPeople(q),
+    episodes: db.searchEpisodes(q),
+  );
+});
+
+final actorItemsProvider = Provider.family<List<MediaSummary>, String>((ref, name) {
+  ref.watch(libraryRevisionProvider);
+  return ref.watch(dbProvider).itemsWithActor(name);
+});
+
+final sameSetProvider = Provider.family<List<MediaSummary>, int>((ref, id) {
+  ref.watch(libraryRevisionProvider);
+  return ref.watch(dbProvider).sameSet(id);
+});
+
+final similarProvider = Provider.family<List<MediaSummary>, int>((ref, id) {
+  ref.watch(libraryRevisionProvider);
+  return ref.watch(dbProvider).similar(id);
+});
+
+/// 搜索页"按类型浏览"：每个类型取评分最高、有剧照的条目做封面。
+typedef GenreTile = ({String genre, int count, String? image});
+
+final genreTilesProvider = Provider<List<GenreTile>>((ref) {
+  ref.watch(libraryRevisionProvider);
+  final db = ref.watch(dbProvider);
+  final all = [
+    ...db.listItems(kind: MediaKind.movie, sort: SortOrder.rating),
+    ...db.listItems(kind: MediaKind.show, sort: SortOrder.rating),
+  ];
+  final count = <String, int>{};
+  final image = <String, String>{};
+  for (final m in all) {
+    for (final g in m.genres) {
+      count[g] = (count[g] ?? 0) + 1;
+      if (m.fanart != null) image.putIfAbsent(g, () => m.fanart!); // 优先剧照（列表已按评分排序）
+    }
+  }
+  for (final m in all) {
+    for (final g in m.genres) {
+      if (m.poster != null) image.putIfAbsent(g, () => m.poster!); // 没有剧照时退回海报
+    }
+  }
+  final genres = count.keys.toList()..sort((a, b) => count[b]!.compareTo(count[a]!));
+  return [for (final g in genres.take(12)) (genre: g, count: count[g]!, image: image[g])];
+});
+
+/// 某个类型下的电影 + 剧集（按评分）。
+final genreItemsProvider = Provider.family<List<MediaSummary>, String>((ref, genre) {
+  ref.watch(libraryRevisionProvider);
+  final db = ref.watch(dbProvider);
+  return [
+    ...db.listItems(kind: MediaKind.movie, sort: SortOrder.rating, genre: genre),
+    ...db.listItems(kind: MediaKind.show, sort: SortOrder.rating, genre: genre),
+  ];
 });
 
 final genresProvider = Provider.family<List<String>, MediaKind>((ref, kind) {

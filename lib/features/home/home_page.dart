@@ -7,7 +7,7 @@ import '../../data/db/models.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
 import '../../widgets/media_image.dart';
-import '../../widgets/poster_card.dart';
+import '../../widgets/poster_shelf.dart';
 import '../detail/detail_page.dart';
 import '../player/play_actions.dart';
 import 'empty_library.dart';
@@ -24,11 +24,12 @@ class HomePage extends ConsumerWidget {
     final insets = ShellInsets.of(context);
     if (sources.isEmpty) return const EmptyLibrary();
 
-    final movies = ref.watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.added, genre: null, limit: 24)));
-    final shows = ref.watch(itemsProvider((kind: MediaKind.show, sort: SortOrder.added, genre: null, limit: 24)));
+    final movies = ref.watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.added, genre: null, limit: 24, filter: WatchFilter.all)));
+    final shows = ref.watch(itemsProvider((kind: MediaKind.show, sort: SortOrder.added, genre: null, limit: 24, filter: WatchFilter.all)));
     final cont = ref.watch(continueWatchingProvider);
+    final favs = ref.watch(favoritesProvider);
     final topRated = ref
-        .watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.rating, genre: null, limit: 24)))
+        .watch(itemsProvider((kind: MediaKind.movie, sort: SortOrder.rating, genre: null, limit: 24, filter: WatchFilter.all)))
         .where((m) => m.rating != null)
         .toList();
 
@@ -56,14 +57,19 @@ class HomePage extends ConsumerWidget {
             ),
           ),
         if (cont.isNotEmpty) _ContinueShelf(items: cont),
-        if (movies.isNotEmpty)
-          _Shelf(title: '最近添加的电影', items: movies, onMore: () => onSeeAll(MediaKind.movie)),
-        if (shows.isNotEmpty) _Shelf(title: '最近添加的剧集', items: shows, onMore: () => onSeeAll(MediaKind.show)),
-        if (topRated.length >= 3) _Shelf(title: '高分电影', items: topRated, onMore: () => onSeeAll(MediaKind.movie)),
+        if (favs.isNotEmpty) _shelf(context, '我的收藏', favs),
+        if (movies.isNotEmpty) _shelf(context, '最近添加的电影', movies, onMore: () => onSeeAll(MediaKind.movie)),
+        if (shows.isNotEmpty) _shelf(context, '最近添加的剧集', shows, onMore: () => onSeeAll(MediaKind.show)),
+        if (topRated.length >= 3) _shelf(context, '高分电影', topRated, onMore: () => onSeeAll(MediaKind.movie)),
         SliverToBoxAdapter(child: SizedBox(height: insets.bottom)),
       ],
     );
   }
+
+  static Widget _shelf(BuildContext context, String title, List<MediaSummary> items, {VoidCallback? onMore}) =>
+      SliverToBoxAdapter(
+        child: PosterShelf(title: title, items: items, onMore: onMore, onTap: (m) => DetailPage.open(context, m.id)),
+      );
 
   /// 顶部大图：先放"继续观看"，再放最近添加里有剧照的，最多 5 个。
   static List<_HeroEntry> _heroEntries(List<ContinueItem> cont, List<MediaSummary> movies, List<MediaSummary> shows) {
@@ -297,43 +303,6 @@ class _HeroPage extends ConsumerWidget {
         overflow: TextOverflow.ellipsis,
         style: ff.isPhone ? TypeScale.largeTitle.copyWith(fontSize: 32) : TypeScale.display.copyWith(fontSize: 48),
       );
-}
-
-class _Shelf extends StatelessWidget {
-  const _Shelf({required this.title, required this.items, required this.onMore});
-
-  final String title;
-  final List<MediaSummary> items;
-  final VoidCallback onMore;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = PosterGrid.targetWidth(MediaQuery.sizeOf(context).width);
-    final g = FormFactor.of(context).gutter;
-    return SliverPadding(
-      padding: const EdgeInsets.only(bottom: 36),
-      sliver: SliverToBoxAdapter(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SectionHeader(title: title, onMore: onMore),
-          SizedBox(
-            height: PosterCard.heightFor(width) + 16,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              padding: EdgeInsets.fromLTRB(g, 6, g, 10),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 18),
-              itemBuilder: (context, i) => PosterCard(
-                item: items[i],
-                width: width,
-                onTap: () => DetailPage.open(context, items[i].id),
-              ),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
 }
 
 class _ContinueShelf extends ConsumerWidget {

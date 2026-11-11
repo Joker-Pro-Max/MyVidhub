@@ -11,7 +11,7 @@ class LibraryDb {
 
   final Database _db;
 
-  static const _schemaVersion = 3;
+  static const _schemaVersion = 4;
 
   static LibraryDb open(String path) {
     final db = sqlite3.open(path);
@@ -38,6 +38,15 @@ class LibraryDb {
     }
     if (v < 3) {
       _db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
+    }
+    if (v < 4) {
+      _db.execute('''
+        CREATE TABLE IF NOT EXISTS favorites (
+          item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+          added_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_items_set ON items(set_name);
+      ''');
     }
     _db.execute('PRAGMA user_version = $_schemaVersion;');
   }
@@ -260,8 +269,9 @@ class LibraryDb {
 
   // ------------------------------------------------------------ 查询
 
-  static const _summaryCols = '''i.id, i.kind, i.title, i.original_title, i.year, i.rating,
+  static const _summaryCols = '''i.id, i.kind, i.title, i.original_title, i.sort_title, i.year, i.rating,
       i.poster, i.fanart, i.logo, i.genres, i.added_at,
+      EXISTS(SELECT 1 FROM favorites fv WHERE fv.item_id = i.id) AS favorite,
       (SELECT COUNT(*) FROM episodes e WHERE e.item_id = i.id) AS episode_count,
       (SELECT COUNT(*) FROM playback_state ps WHERE ps.finished = 1 AND ps.path IN
         (SELECT path FROM files WHERE item_id = i.id
@@ -271,17 +281,21 @@ class LibraryDb {
         WHERE f.item_id = i.id AND ps.finished = 0 AND ps.duration_ms > 0
         ORDER BY ps.updated_at DESC LIMIT 1) AS progress''';
 
+  static const _watchedExpr = "((kind = 'movie' AND watched_count > 0) OR "
+      "(kind = 'show' AND episode_count > 0 AND watched_count >= episode_count))";
+
   List<MediaSummary> listItems({
     required MediaKind kind,
     SortOrder sort = SortOrder.added,
     int? limit,
     String? genre,
+    WatchFilter filter = WatchFilter.all,
   }) {
     final order = switch (sort) {
-      SortOrder.added => 'i.added_at DESC, i.id DESC',
-      SortOrder.title => 'COALESCE(i.sort_title, i.title) COLLATE NOCASE',
-      SortOrder.year => 'i.year DESC NULLS LAST, i.title',
-      SortOrder.rating => 'i.rating DESC NULLS LAST, i.title',
+      SortOrder.added => 'added_at DESC, id DESC',
+      SortOrder.title => 'COALESCE(sort_title, title) COLLATE NOCASE',
+      SortOrder.year => 'year DESC NULLS LAST, title',
+      SortOrder.rating => 'rating DESC NULLS LAST, title',
     };
     final where = StringBuffer('i.kind = ?');
     final args = <Object?>[kind.name];
@@ -289,9 +303,107 @@ class LibraryDb {
       where.write(" AND ('|' || i.genres || '|') LIKE ?");
       args.add('%|$genre|%');
     }
+    final outer = switch (filter) {
+      WatchFilter.all => '1',
+      WatchFilter.unwatched => 'NOT $_watchedExpr',
+      WatchFilter.watched => _watchedExpr,
+      WatchFilter.favorite => 'favorite = 1',
+    };
     return _db
-        .select('SELECT $_summaryCols FROM items i WHERE $where ORDER BY $order'
-            '${limit != null ? ' LIMIT $limit' : ''}', args)
+        .select('SELECT * FROM (SELECT $_summaryCols FROM items i WHERE $where) '
+            'WHERE $outer ORDER BY $order${limit != null ? ' LIMIT $limit' : ''}', args)
+        .map(_summary)
+        .toList();
+  }
+
+  // ------------------------------------------------------------ 收藏
+
+  List<MediaSummary> favorites({int? limit}) => _db
+      .select('SELECT $_summaryCols FROM items i JOIN favorites f ON f.item_id = i.id '
+          'ORDER BY f.added_at DESC${limit != null ? ' LIMIT $limit' : ''}')
+      .map(_summary)
+      .toList();
+
+  bool isFavorite(int itemId) =>
+      _db.select('SELECT 1 FROM favorites WHERE item_id = ?', [itemId]).isNotEmpty;
+
+  void setFavorite(int itemId, bool favorite) {
+    if (favorite) {
+      _db.execute('INSERT OR IGNORE INTO favorites(item_id, added_at) VALUES (?, ?)', [itemId, _now()]);
+    } else {
+      _db.execute('DELETE FROM favorites WHERE item_id = ?', [itemId]);
+    }
+  }
+
+  // ------------------------------------------------------------ 搜索
+
+  static String _like(String q) => '%${q.replaceAll('\\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
+
+  /// 片名 / 原名 / 导演 / 演员 匹配的条目；片名前缀匹配排最前。
+  List<MediaSummary> searchItems(String q, {int limit = 60}) {
+    final like = _like(q.trim());
+    final prefix = '${q.trim()}%';
+    return _db
+        .select('''SELECT $_summaryCols FROM items i
+            WHERE i.title LIKE ?1 ESCAPE '\\' OR i.original_title LIKE ?1 ESCAPE '\\'
+               OR i.sort_title LIKE ?1 ESCAPE '\\' OR i.directors LIKE ?1 ESCAPE '\\'
+               OR i.id IN (SELECT item_id FROM actors WHERE name LIKE ?1 ESCAPE '\\')
+            ORDER BY CASE WHEN i.title LIKE ?2 THEN 0 WHEN i.title LIKE ?1 ESCAPE '\\' THEN 1 ELSE 2 END,
+                     i.rating DESC NULLS LAST
+            LIMIT $limit''', [like, prefix])
+        .map(_summary)
+        .toList();
+  }
+
+  List<PersonHit> searchPeople(String q, {int limit = 20}) => _db
+      .select('''SELECT name, MAX(thumb) AS thumb, COUNT(DISTINCT item_id) AS n FROM actors
+          WHERE name LIKE ? ESCAPE '\\' GROUP BY name ORDER BY n DESC, name LIMIT $limit''', [_like(q.trim())])
+      .map((r) => PersonHit(r['name'] as String, r['thumb'] as String?, r['n'] as int))
+      .toList();
+
+  /// 单集标题匹配（排除"第 N 集"这种自动生成的标题）。
+  List<EpisodeHit> searchEpisodes(String q, {int limit = 20}) => _db
+      .select('''SELECT e.*, i.title AS show_title, i.id AS show_id FROM episodes e
+          JOIN items i ON i.id = e.item_id
+          WHERE e.title LIKE ? ESCAPE '\\' AND e.title NOT LIKE '第 % 集'
+          ORDER BY i.title, e.season, e.episode LIMIT $limit''', [_like(q.trim())])
+      .map((r) => EpisodeHit(r['show_id'] as int, r['show_title'] as String, _episode(r)))
+      .toList();
+
+  /// 某位演员参演的条目。
+  List<MediaSummary> itemsWithActor(String name) => _db
+      .select('SELECT $_summaryCols FROM items i WHERE i.id IN '
+          '(SELECT item_id FROM actors WHERE name = ?) ORDER BY i.year DESC NULLS LAST, i.title', [name])
+      .map(_summary)
+      .toList();
+
+  String? actorThumb(String name) => _db
+      .select('SELECT MAX(thumb) AS t FROM actors WHERE name = ?', [name])
+      .firstOrNull?['t'] as String?;
+
+  // ------------------------------------------------------------ 相关推荐
+
+  /// 同一合集（NFO 的 `<set>`）里的其他影片，按年份排列。
+  List<MediaSummary> sameSet(int itemId) => _db
+      .select('''SELECT $_summaryCols FROM items i WHERE i.set_name IS NOT NULL
+          AND i.set_name = (SELECT set_name FROM items WHERE id = ?1) AND i.id != ?1
+          ORDER BY i.year NULLS LAST, i.title''', [itemId])
+      .map(_summary)
+      .toList();
+
+  /// 类型相近的同类条目：共享类型越多越靠前，其次按评分。
+  List<MediaSummary> similar(int itemId, {int limit = 20}) {
+    final row = _db.select('SELECT kind, genres, set_name FROM items WHERE id = ?', [itemId]).firstOrNull;
+    if (row == null || row['genres'] == null) return const [];
+    final genres = (row['genres'] as String).split('|').where((g) => g.isNotEmpty).take(3).toList();
+    if (genres.isEmpty) return const [];
+    final score = genres.map((_) => "(CASE WHEN ('|' || i.genres || '|') LIKE ? THEN 1 ELSE 0 END)").join(' + ');
+    final args = [for (final g in genres) '%|$g|%', row['kind'], itemId, row['set_name']];
+    return _db
+        .select('''SELECT * FROM (SELECT $_summaryCols, ($score) AS score FROM items i
+            WHERE i.kind = ? AND i.id != ? AND i.genres IS NOT NULL
+              AND (i.set_name IS NULL OR i.set_name IS NOT ?))
+            WHERE score > 0 ORDER BY score DESC, rating DESC NULLS LAST LIMIT $limit''', args)
         .map(_summary)
         .toList();
   }
@@ -509,6 +621,7 @@ class LibraryDb {
         fanart: r['fanart'] as String?,
         logo: r['logo'] as String?,
         genres: _split(r['genres']),
+        favorite: r['favorite'] == 1,
         episodeCount: r['episode_count'] as int,
         watchedCount: r['watched_count'] as int,
         progress: (r['progress'] as num?)?.toDouble(),

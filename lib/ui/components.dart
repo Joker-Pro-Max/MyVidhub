@@ -257,11 +257,12 @@ class FilterPills<T> extends StatelessWidget {
 
 /// 区块标题 + 可选"全部"。
 class SectionHeader extends StatelessWidget {
-  const SectionHeader({super.key, required this.title, this.onMore, this.padding});
+  const SectionHeader({super.key, required this.title, this.onMore, this.padding, this.trailing});
 
   final String title;
   final VoidCallback? onMore;
   final EdgeInsets? padding;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -270,6 +271,7 @@ class SectionHeader extends StatelessWidget {
       padding: padding ?? EdgeInsets.fromLTRB(g, 0, g - 8, 12),
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(child: Text(title, style: TypeScale.title)),
+        ?trailing,
         if (onMore != null)
           Pressable(
             onTap: onMore,

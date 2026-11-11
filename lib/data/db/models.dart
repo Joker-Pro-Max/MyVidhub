@@ -1,5 +1,29 @@
 enum MediaKind { movie, show }
 
+enum WatchFilter {
+  all('全部'),
+  unwatched('未看'),
+  watched('已看'),
+  favorite('收藏');
+
+  const WatchFilter(this.label);
+  final String label;
+}
+
+class PersonHit {
+  const PersonHit(this.name, this.thumb, this.itemCount);
+  final String name;
+  final String? thumb;
+  final int itemCount;
+}
+
+class EpisodeHit {
+  const EpisodeHit(this.showId, this.showTitle, this.episode);
+  final int showId;
+  final String showTitle;
+  final EpisodeRow episode;
+}
+
 enum SortOrder {
   added('最近添加'),
   title('标题'),
@@ -42,6 +66,7 @@ class MediaSummary {
     this.fanart,
     this.logo,
     this.genres = const [],
+    this.favorite = false,
   });
   final int id;
   final MediaKind kind;
@@ -53,11 +78,16 @@ class MediaSummary {
   final String? fanart;
   final String? logo;
   final List<String> genres;
+  final bool favorite;
   final int episodeCount;
   final int watchedCount;
 
   /// 电影未看完时的进度 0–1。
   final double? progress;
+
+  /// 剧集看了一部分时剩余的集数；没开始看或已看完返回 0。
+  int get unwatchedEpisodes =>
+      kind == MediaKind.show && watchedCount > 0 && watchedCount < episodeCount ? episodeCount - watchedCount : 0;
 
   bool get watched => kind == MediaKind.movie
       ? watchedCount > 0

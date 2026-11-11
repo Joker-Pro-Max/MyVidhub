@@ -21,11 +21,12 @@ class LibraryPage extends ConsumerStatefulWidget {
 
 class _LibraryPageState extends ConsumerState<LibraryPage> {
   SortOrder _sort = SortOrder.added;
+  WatchFilter _filter = WatchFilter.all;
   String? _genre;
 
   @override
   Widget build(BuildContext context) {
-    final items = ref.watch(itemsProvider((kind: widget.kind, sort: _sort, genre: _genre, limit: null)));
+    final items = ref.watch(itemsProvider((kind: widget.kind, sort: _sort, genre: _genre, limit: null, filter: _filter)));
     final genres = ref.watch(genresProvider(widget.kind));
     final hasSources = ref.watch(sourcesProvider).isNotEmpty;
     final insets = ShellInsets.of(context);
@@ -48,7 +49,24 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 child: Text('${items.length}', style: TypeScale.title.copyWith(color: Palette.text3)),
               ),
               const Spacer(),
-              _SortMenu(value: _sort, onChanged: (s) => setState(() => _sort = s)),
+              _MenuPicker<WatchFilter>(
+                tooltip: '筛选',
+                value: _filter,
+                values: WatchFilter.values,
+                label: (f) => f == WatchFilter.all ? '全部' : f.label,
+                icon: Icons.filter_list_rounded,
+                highlighted: _filter != WatchFilter.all,
+                onChanged: (f) => setState(() => _filter = f),
+              ),
+              const SizedBox(width: 4),
+              _MenuPicker<SortOrder>(
+                tooltip: '排序',
+                value: _sort,
+                values: SortOrder.values,
+                label: (s) => s.label,
+                icon: Icons.unfold_more_rounded,
+                onChanged: (s) => setState(() => _sort = s),
+              ),
             ]),
           ),
         ),
@@ -71,7 +89,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             child: Center(
               child: ref.watch(scanProvider).running
                   ? const Spinner(size: 24)
-                  : Text('没有找到$label', style: TypeScale.body.copyWith(color: Palette.text2)),
+                  : Text(
+                      switch (_filter) {
+                        WatchFilter.all => '没有找到$label',
+                        WatchFilter.unwatched => '这里的$label都看过了',
+                        WatchFilter.watched => '还没有看完的$label',
+                        WatchFilter.favorite => '还没有收藏$label。在详情页点书签即可收藏。',
+                      },
+                      style: TypeScale.body.copyWith(color: Palette.text2),
+                    ),
             ),
           )
         else
@@ -81,36 +107,59 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   }
 }
 
-class _SortMenu extends StatelessWidget {
-  const _SortMenu({required this.value, required this.onChanged});
-  final SortOrder value;
-  final ValueChanged<SortOrder> onChanged;
+/// 标题栏右侧的下拉选择（排序 / 筛选）。
+class _MenuPicker<T> extends StatelessWidget {
+  const _MenuPicker({
+    required this.tooltip,
+    required this.value,
+    required this.values,
+    required this.label,
+    required this.icon,
+    required this.onChanged,
+    this.highlighted = false,
+  });
+
+  final String tooltip;
+  final T value;
+  final List<T> values;
+  final String Function(T) label;
+  final IconData icon;
+  final ValueChanged<T> onChanged;
+  final bool highlighted;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<SortOrder>(
-        tooltip: '排序',
+  Widget build(BuildContext context) => PopupMenuButton<T>(
+        tooltip: tooltip,
         initialValue: value,
         onSelected: onChanged,
         offset: const Offset(0, 44),
         itemBuilder: (_) => [
-          for (final s in SortOrder.values)
+          for (final v in values)
             PopupMenuItem(
-              value: s,
+              value: v,
               child: Row(children: [
                 SizedBox(
                   width: 24,
-                  child: s == value ? const Icon(Icons.check_rounded, size: 18, color: Palette.light) : null,
+                  child: v == value ? const Icon(Icons.check_rounded, size: 18, color: Palette.light) : null,
                 ),
-                Text(s.label),
+                Text(label(v)),
               ]),
             ),
         ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: highlighted ? Palette.light : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+          ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(value.label, style: TypeScale.callout.copyWith(color: Palette.text2)),
-            const SizedBox(width: 2),
-            const Icon(Icons.unfold_more_rounded, size: 18, color: Palette.text2),
+            Text(label(value),
+                style: TypeScale.callout.copyWith(
+                    color: highlighted ? Palette.onLight : Palette.text2,
+                    fontWeight: highlighted ? FontWeight.w600 : FontWeight.w500)),
+            const SizedBox(width: 4),
+            Icon(icon, size: 18, color: highlighted ? Palette.onLight : Palette.text2),
           ]),
         ),
       );
