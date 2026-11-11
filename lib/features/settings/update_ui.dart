@@ -86,12 +86,6 @@ class UpdateSection extends ConsumerWidget {
       UpdateStatus.idle => ('点击检查', const Icon(Icons.chevron_right_rounded)),
     };
 
-    final tokenText = ctrl.hasCustomToken
-        ? '已手动设置'
-        : ctrl.hasBuiltInToken
-            ? '已内置'
-            : '未设置（无法访问私有仓库）';
-
     return Card(
       margin: EdgeInsets.zero,
       child: Column(children: [
@@ -111,37 +105,12 @@ class UpdateSection extends ConsumerWidget {
               : () => ctrl.check(),
         ),
         ListTile(
-          leading: const Icon(Icons.key_rounded),
-          title: const Text('更新访问令牌'),
-          subtitle: Text('GitHub 私有仓库 ${UpdateConfig.repo} · $tokenText'),
-          onTap: () => _editToken(context, ref),
+          leading: const Icon(Icons.gavel_rounded),
+          title: const Text('许可'),
+          subtitle: Text('PolyForm Noncommercial 1.0.0 · 仅限个人非商业使用，禁止商业化\ngithub.com/${UpdateConfig.repo}'),
+          isThreeLine: true,
         ),
       ]),
     );
-  }
-
-  Future<void> _editToken(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String?>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('更新访问令牌'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('填写对仓库只读的 GitHub 令牌（Fine-grained token，Contents: Read-only）。留空并保存则恢复使用内置令牌。'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: controller,
-            obscureText: true,
-            autocorrect: false,
-            decoration: const InputDecoration(hintText: 'github_pat_...', border: OutlineInputBorder()),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, controller.text), child: const Text('保存')),
-        ],
-      ),
-    );
-    if (result != null) ref.read(updateProvider.notifier).setToken(result);
   }
 }

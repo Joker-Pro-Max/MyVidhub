@@ -3,6 +3,15 @@
 本地影视库管理：读取 Kodi / Jellyfin / Emby / tinyMediaManager 整理的 **NFO + 海报**，以海报墙方式浏览。
 Flutter 开发，一套代码支持 Android 平板 / 手机、iPad / iPhone、Windows、macOS。架构见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
+> **⚠️ 许可声明：仅限个人、非商业使用**
+>
+> 本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE.md) 授权，**不是**常规意义上的开源软件。
+>
+> - ✅ 允许：个人学习、研究、自用；在非商业前提下修改和分享（须保留本许可证与版权声明）
+> - ❌ 禁止：任何商业用途，包括但不限于售卖本软件或其修改版、内置到商业产品或服务中、以付费方式分发、用于盈利性运营
+>
+> 如需商业授权，请通过 GitHub 联系作者。Copyright © 2026 Joker-Pro-Max。
+
 ## M1：媒体库 ✅
 
 - 添加本地文件夹（Android 会引导开启"所有文件访问权限"）
@@ -78,3 +87,7 @@ lib/
 test/                       单元测试（含模拟媒体库生成器）
 integration_test/           多尺寸截图测试
 ```
+
+## 许可证
+
+[PolyForm Noncommercial License 1.0.0](LICENSE.md) — 禁止商业使用。中文说明仅为便于理解，以英文许可证原文为准。

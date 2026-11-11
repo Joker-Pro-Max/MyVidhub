@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# 发布新版本到 GitHub 私有仓库 Release，平板上的 App 会自动检查并更新。
+# 发布新版本到 GitHub Release，平板上的 App 会自动检查并更新。
 #
 # 用法：tool/release.sh <版本号> [更新说明]
 #   例：tool/release.sh 1.0.1 "修复字幕方块；新增长按标记已看"
 #
-# 前提：
-#   - .secrets/update_token 存放只读令牌（Fine-grained，仅本仓库 Contents: Read-only），会打包进 App
-#   - gh 已登录且有本仓库写权限；工作区已提交干净
+# 前提：gh 已登录且有本仓库写权限；工作区已提交干净
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${1:?用法: tool/release.sh <版本号如 1.0.1> [更新说明]}"
 NOTES="${2:-MyVidhub $VERSION}"
-TOKEN_FILE=.secrets/update_token
 
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本号格式应为 1.2.3"; exit 1; }
-[[ -s "$TOKEN_FILE" ]] || { echo "缺少 $TOKEN_FILE（只读访问令牌）"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "工作区有未提交的改动，请先提交"; exit 1; }
 
 OLD_BUILD=$(grep -E '^version:' pubspec.yaml | sed -E 's/.*\+([0-9]+).*/\1/')
@@ -28,8 +24,7 @@ trap 'git checkout -- pubspec.yaml 2>/dev/null || true' ERR
 sed -i '' -E "s/^version: .*/version: $VERSION+$BUILD/" pubspec.yaml
 
 export LANG=en_US.UTF-8
-flutter build apk --release --split-per-abi \
-  --dart-define=UPDATE_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+flutter build apk --release --split-per-abi
 
 OUT=build/app/outputs/flutter-apk
 mkdir -p dist

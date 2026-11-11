@@ -51,7 +51,6 @@ class UpdateState {
 final updateProvider = NotifierProvider<UpdateController, UpdateState>(UpdateController.new);
 
 class UpdateController extends Notifier<UpdateState> {
-  static const _tokenKey = 'update_token';
   static const _lastCheckKey = 'update_last_check';
   static const _autoInterval = Duration(hours: 6);
 
@@ -61,23 +60,9 @@ class UpdateController extends Notifier<UpdateState> {
     return const UpdateState();
   }
 
-  /// 设置里手动填写的令牌优先，否则用打包时内置的。
-  String get token {
-    final custom = ref.read(dbProvider).setting(_tokenKey);
-    return (custom != null && custom.isNotEmpty) ? custom : UpdateConfig.buildToken;
-  }
-
-  bool get hasCustomToken => (ref.read(dbProvider).setting(_tokenKey) ?? '').isNotEmpty;
-  bool get hasBuiltInToken => UpdateConfig.buildToken.isNotEmpty;
-
-  void setToken(String? value) {
-    ref.read(dbProvider).setSetting(_tokenKey, (value == null || value.trim().isEmpty) ? null : value.trim());
-    state = state.copyWith(status: UpdateStatus.idle);
-  }
-
   /// 启动时调用：安卓上每 6 小时最多静默检查一次。
   Future<void> autoCheck() async {
-    if (!Updater.supported || token.isEmpty) return;
+    if (!Updater.supported) return;
     final db = ref.read(dbProvider);
     final last = int.tryParse(db.setting(_lastCheckKey) ?? '');
     if (last != null &&
@@ -91,7 +76,7 @@ class UpdateController extends Notifier<UpdateState> {
     if (state.status == UpdateStatus.checking || state.status == UpdateStatus.downloading) return;
     state = state.copyWith(status: UpdateStatus.checking);
     try {
-      final r = await Updater(token: token).check();
+      final r = await Updater().check();
       ref.read(dbProvider).setSetting(_lastCheckKey, '${DateTime.now().millisecondsSinceEpoch}');
       if (r == null) {
         state = state.copyWith(status: UpdateStatus.upToDate, message: '已是最新版本');
@@ -115,7 +100,7 @@ class UpdateController extends Notifier<UpdateState> {
     state = state.copyWith(status: UpdateStatus.downloading, progress: 0);
     try {
       var lastEmit = 0.0;
-      final file = await Updater(token: token).download(r, onProgress: (p) {
+      final file = await Updater().download(r, onProgress: (p) {
         if (p - lastEmit >= 0.01 || p >= 1) {
           lastEmit = p;
           state = state.copyWith(status: UpdateStatus.downloading, progress: p);

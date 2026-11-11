@@ -8,13 +8,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// 自动更新：从 GitHub 私有仓库的 Release 检查、下载新版本。
-///
-/// 私有仓库需要访问令牌（只读）。令牌在打包时通过
-/// `--dart-define=UPDATE_TOKEN=...` 注入（见 tool/release.sh），也可在设置里手动填写。
+/// 自动更新：从 GitHub 公开仓库的 Release 检查、下载新版本（发布见 tool/release.sh）。
 class UpdateConfig {
   static const repo = String.fromEnvironment('UPDATE_REPO', defaultValue: 'Joker-Pro-Max/MyVidhub');
-  static const buildToken = String.fromEnvironment('UPDATE_TOKEN');
 }
 
 class ReleaseInfo {
@@ -58,9 +54,6 @@ class UpdateException implements Exception {
 }
 
 class Updater {
-  Updater({required this.token});
-
-  final String token;
   static const _channel = MethodChannel('myvidhub/installer');
 
   static bool get supported => Platform.isAndroid;
@@ -83,7 +76,6 @@ class Updater {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'MyVidhub-Updater',
-        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
       };
 
   /// 返回比当前新的版本；已是最新返回 null。
@@ -95,15 +87,14 @@ class Updater {
 
   /// 仓库最新发布的版本信息（适合本设备的安装包）。
   Future<ReleaseInfo> latest() async {
-    if (token.isEmpty) throw UpdateException('未设置访问令牌，无法访问私有仓库');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     try {
       final req = await client.getUrl(Uri.parse('https://api.github.com/repos/${UpdateConfig.repo}/releases/latest'));
       _headers.forEach(req.headers.set);
       final res = await req.close().timeout(const Duration(seconds: 20));
       final body = await res.transform(utf8.decoder).join();
-      if (res.statusCode == 401) throw UpdateException('访问令牌无效或已过期');
-      if (res.statusCode == 404) throw UpdateException('没有找到发布版本（或令牌无权访问该仓库）');
+      if (res.statusCode == 403) throw UpdateException('GitHub 访问过于频繁，请稍后再试');
+      if (res.statusCode == 404) throw UpdateException('还没有发布任何版本');
       if (res.statusCode != 200) throw UpdateException('检查更新失败（HTTP ${res.statusCode}）');
 
       final json = jsonDecode(body) as Map<String, dynamic>;
@@ -146,7 +137,7 @@ class Updater {
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
     try {
-      // 1. 私有仓库的资源先请求 API（带令牌），GitHub 302 跳转到临时签名地址
+      // 1. 请求资源 API，GitHub 302 跳转到 CDN 下载地址
       final req = await client.getUrl(Uri.parse(r.assetApiUrl));
       _headers.forEach(req.headers.set);
       req.headers.set('Accept', 'application/octet-stream');
@@ -156,7 +147,6 @@ class Updater {
         final location = res.headers.value(HttpHeaders.locationHeader);
         await res.drain<void>();
         if (location == null) throw UpdateException('下载地址无效');
-        // 2. 签名地址不能再带 Authorization 头
         final req2 = await client.getUrl(Uri.parse(location));
         req2.headers.set('User-Agent', 'MyVidhub-Updater');
         res = await req2.close();
