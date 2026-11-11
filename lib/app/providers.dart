@@ -209,6 +209,8 @@ class ScanController extends Notifier<ScanState> {
       dbPath: ref.read(dbPathProvider),
       sourceId: sourceId,
       root: source.root,
+      type: source.type,
+      config: source.config,
     );
     _job = job;
     var lastBump = DateTime.now();

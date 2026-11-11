@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../data/sources/network_config.dart';
+import '../services/source_registry.dart';
 import 'tokens.dart';
 
 /// 从海报 / 剧照取主色，压暗降饱和后作为详情页背景的氛围光。
@@ -16,7 +18,8 @@ class ArtworkTint {
 
   static Future<Color?> _compute(String path) async {
     try {
-      final bytes = await File(path).readAsBytes();
+      final bytes = isRemotePath(path) ? await SourceRegistry.instance.bytes(path) : await File(path).readAsBytes();
+      if (bytes == null) return null;
       final codec = await ui.instantiateImageCodec(bytes, targetWidth: 24);
       final frame = await codec.getNextFrame();
       final data = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);

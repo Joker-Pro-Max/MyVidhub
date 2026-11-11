@@ -47,6 +47,7 @@ dependencies:
   screen_brightness: ^2.1.11
   package_info_plus: ^10.2.2
   crypto: ^3.0.8
+  smb_connect: ^0.0.9
 
 dev_dependencies:
   flutter_test:

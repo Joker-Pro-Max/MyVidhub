@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import '../data/db/library_db.dart';
-import '../data/sources/local_source.dart';
+import '../data/sources/source_factory.dart';
 import 'library_scanner.dart';
 
 class ScanEvent {
@@ -26,12 +26,14 @@ class ScanJob {
     required String dbPath,
     required int sourceId,
     required String root,
+    String type = 'local',
+    String? config,
   }) async {
     final port = ReceivePort();
     final controller = StreamController<ScanEvent>();
     final isolate = await Isolate.spawn(
       _entry,
-      [port.sendPort, dbPath, sourceId, root],
+      [port.sendPort, dbPath, sourceId, root, type, config],
       onExit: port.sendPort,
       onError: port.sendPort,
     );
@@ -65,13 +67,15 @@ class ScanJob {
     final dbPath = args[1] as String;
     final sourceId = args[2] as int;
     final root = args[3] as String;
+    final type = args[4] as String;
+    final config = args[5] as String?;
 
     final db = LibraryDb.open(dbPath);
     var found = 0;
     var lastSent = DateTime.fromMillisecondsSinceEpoch(0);
     try {
       final scanner = LibraryScanner(
-        LocalSource(root),
+        createSource(id: sourceId, type: type, root: root, config: config),
         onProgress: (dir, n) {
           final now = DateTime.now();
           if (now.difference(lastSent).inMilliseconds > 120) {

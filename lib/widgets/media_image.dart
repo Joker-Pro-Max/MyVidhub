@@ -1,7 +1,12 @@
 import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 
+import '../data/sources/network_config.dart';
+import '../services/source_registry.dart';
 import '../ui/tokens.dart';
 
 /// 本地 / 网络图片，按显示尺寸降采样解码（4K 海报也不卡），淡入，失败显示占位。
@@ -29,9 +34,11 @@ class MediaImage extends StatelessWidget {
     final p = path;
     if (p == null || p.isEmpty) return ph;
     final cacheWidth = (decodeWidth * MediaQuery.devicePixelRatioOf(context)).round();
-    final ImageProvider provider = p.startsWith('http://') || p.startsWith('https://')
-        ? NetworkImage(p)
-        : FileImage(File(p));
+    final ImageProvider provider = isRemotePath(p)
+        ? RemoteImage(p)
+        : p.startsWith('http://') || p.startsWith('https://')
+            ? NetworkImage(p)
+            : FileImage(File(p));
     return Image(
       image: ResizeImage(provider, width: cacheWidth, policy: ResizeImagePolicy.fit),
       fit: fit,
@@ -101,4 +108,30 @@ class PosterPlaceholder extends StatelessWidget {
       }),
     );
   }
+}
+
+/// NAS（SMB / WebDAV）上的图片：经 [SourceRegistry] 下载并缓存到磁盘，显示时才加载。
+@immutable
+class RemoteImage extends ImageProvider<RemoteImage> {
+  const RemoteImage(this.uri);
+  final String uri;
+
+  @override
+  Future<RemoteImage> obtainKey(ImageConfiguration configuration) => SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(RemoteImage key, ImageDecoderCallback decode) =>
+      MultiFrameImageStreamCompleter(codec: _load(decode), scale: 1);
+
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
+    final bytes = await SourceRegistry.instance.bytes(uri);
+    if (bytes == null || bytes.isEmpty) throw StateError('无法加载 $uri');
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+  }
+
+  @override
+  bool operator ==(Object other) => other is RemoteImage && other.uri == uri;
+
+  @override
+  int get hashCode => uri.hashCode;
 }

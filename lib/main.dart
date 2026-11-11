@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app/app_shell.dart';
 import 'app/providers.dart';
 import 'data/db/library_db.dart';
+import 'services/source_registry.dart';
 import 'ui/tokens.dart';
 
 Future<void> main() async {
@@ -17,6 +18,7 @@ Future<void> main() async {
   await dir.create(recursive: true);
   final dbPath = p.join(dir.path, 'library.db');
   final db = LibraryDb.open(dbPath);
+  SourceRegistry.instance.attach(db);
 
   final container = ProviderContainer(overrides: [
     dbPathProvider.overrideWithValue(dbPath),

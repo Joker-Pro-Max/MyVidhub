@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/app_shell.dart';
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
+import '../../services/source_registry.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
 import '../../widgets/media_image.dart';
@@ -431,7 +432,7 @@ class ScanBanner extends ConsumerWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('正在扫描媒体库 · 已发现 ${scan.found} 个', style: TypeScale.callout),
             if (scan.dir != null)
-              Text(scan.dir!,
+              Text(SourceRegistry.instance.displayPath(scan.dir!),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TypeScale.caption.copyWith(color: Palette.text3)),

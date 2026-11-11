@@ -11,6 +11,7 @@
     <application
         android:label="MyVidhub"
         android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

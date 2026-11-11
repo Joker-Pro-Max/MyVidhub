@@ -7,6 +7,9 @@ import '../../app/providers.dart';
 import '../../data/db/models.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
+import '../../data/sources/network_config.dart';
+import '../../services/source_registry.dart';
+import 'add_network_source.dart';
 import 'add_source.dart';
 import 'folder_browser.dart';
 import 'update_ui.dart';
@@ -63,7 +66,7 @@ class SettingsPage extends ConsumerWidget {
                   '支持 Kodi、Jellyfin、Emby、tinyMediaManager 整理的目录：读取 NFO、海报、剧照、季海报和集缩略图。只读取，不会改动文件。',
                 ].join('\n'),
                 children: [
-                  for (final s in sources)
+                  for (final s in sources.where((s) => !s.isNetwork))
                     _FolderRow(
                       source: s,
                       roots: roots,
@@ -82,14 +85,24 @@ class SettingsPage extends ConsumerWidget {
               ),
               const SizedBox(height: 32),
 
-              const GroupedList(
+              GroupedList(
                 header: '网络存储',
+                footer: '支持 SMB 和 WebDAV。海报和剧照在浏览时才下载，并缓存在本机。',
                 children: [
+                  for (final s in sources.where((s) => s.isNetwork))
+                    _FolderRow(
+                      source: s,
+                      roots: roots,
+                      scanning: scan.sourceId == s.id,
+                      queued: scan.queue.contains(s.id),
+                      found: scan.sourceId == s.id ? scan.found : null,
+                    ),
                   SettingRow(
                     icon: Icons.lan_outlined,
-                    title: 'SMB / WebDAV',
-                    subtitle: '直接播放 NAS 和电脑共享文件夹里的影片',
-                    trailing: TagLabel('即将支持'),
+                    leading: const IconTile(icon: Icons.add_rounded, size: 44, filled: true),
+                    title: '添加 SMB / WebDAV',
+                    subtitle: '群晖、威联通、Windows 共享文件夹等',
+                    onTap: () => AddNetworkSourcePage.open(context),
                   ),
                 ],
               ),
@@ -148,8 +161,18 @@ class _FolderRow extends ConsumerWidget {
                 '${source.itemCount} 个条目',
                 last != null ? '${relativeTime(last)}更新' : '尚未扫描',
               ].join(' · ');
-    final root = roots.where((r) => p.equals(r.path, source.root) || p.isWithin(r.path, source.root)).firstOrNull;
-    final icon = root?.icon == Icons.sd_card_outlined ? Icons.sd_card_outlined : Icons.folder_rounded;
+    final root = source.isNetwork
+        ? null
+        : roots.where((r) => p.equals(r.path, source.root) || p.isWithin(r.path, source.root)).firstOrNull;
+    final icon = source.isNetwork
+        ? Icons.dns_rounded
+        : root?.icon == Icons.sd_card_outlined
+            ? Icons.sd_card_outlined
+            : Icons.folder_rounded;
+    final location = source.isNetwork && source.config != null
+        ? '${source.type.toUpperCase()} · ${NetworkConfig.decode(source.config!).host}'
+            '${source.root.split('/').where((x) => x.isNotEmpty).map((x) => ' › $x').join()}'
+        : friendlyPath(source.root, roots);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
@@ -161,7 +184,7 @@ class _FolderRow extends ConsumerWidget {
             Text(source.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TypeScale.headline),
             const SizedBox(height: 3),
             Text(
-              friendlyPath(source.root, roots),
+              location,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TypeScale.caption.copyWith(color: Palette.text3),
@@ -222,6 +245,7 @@ class _FolderRow extends ConsumerWidget {
     );
     if (ok != true) return;
     ref.read(dbProvider).deleteSource(source.id);
+    SourceRegistry.instance.forget(source.id);
     ref.read(libraryRevisionProvider.notifier).bump();
   }
 }

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
+import '../../services/source_registry.dart';
 import '../../ui/artwork_tint.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
@@ -235,7 +236,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(g, 32, g, 48 + MediaQuery.paddingOf(context).bottom),
                     sliver: SliverToBoxAdapter(
-                      child: Text(d.dir, style: TypeScale.caption.copyWith(color: Palette.text3)),
+                      child: Text(SourceRegistry.instance.displayPath(d.dir), style: TypeScale.caption.copyWith(color: Palette.text3)),
                     ),
                   ),
                 ],

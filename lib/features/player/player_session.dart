@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../data/db/library_db.dart';
+import '../../services/source_registry.dart';
 import 'play_item.dart';
 import 'subtitle_fonts.dart';
 
@@ -102,8 +103,31 @@ class PlayerSession extends ChangeNotifier {
     }
     resumedFrom = start;
     _lastSave = DateTime.now();
-    await player.open(Media(current.path, start: start), play: true);
+
+    // 本地文件直接播放；NAS 上的文件解析成 HTTP 地址（WebDAV 直连 / SMB 走本地代理）
+    final PlayTarget target;
+    try {
+      target = await SourceRegistry.instance.playTarget(current.path);
+    } catch (e) {
+      error = '$e';
+      notifyListeners();
+      return;
+    }
+    final np = _native;
+    await np?.setProperty('http-header-fields', target.httpHeader ?? '');
+    await player.open(Media(target.url, start: start), play: true);
     notifyListeners();
+
+    if (target.subtitles.isNotEmpty && np != null) {
+      // 等文件真正加载（拿到时长）后再挂外挂字幕
+      try {
+        await player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(seconds: 20));
+        for (final s in target.subtitles) {
+          final name = Uri.decodeComponent(s.substring(s.lastIndexOf('/') + 1));
+          await np.command(['sub-add', s, 'auto', name]);
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> restartFromBeginning() async {

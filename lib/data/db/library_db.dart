@@ -11,7 +11,7 @@ class LibraryDb {
 
   final Database _db;
 
-  static const _schemaVersion = 4;
+  static const _schemaVersion = 5;
 
   static LibraryDb open(String path) {
     final db = sqlite3.open(path);
@@ -47,6 +47,10 @@ class LibraryDb {
         );
         CREATE INDEX IF NOT EXISTS idx_items_set ON items(set_name);
       ''');
+    }
+    if (v < 5) {
+      // 网络源的连接配置（JSON：地址、用户名、密码等）
+      _db.execute('ALTER TABLE sources ADD COLUMN config TEXT');
     }
     _db.execute('PRAGMA user_version = $_schemaVersion;');
   }
@@ -169,16 +173,19 @@ class LibraryDb {
             type: r['type'] as String,
             name: r['name'] as String,
             root: r['root'] as String,
+            config: r['config'] as String?,
             lastScanAt: _date(r['last_scan_at']),
             itemCount: r['n'] as int,
           ))
       .toList();
 
-  int addSource({required String type, required String name, required String root}) {
-    _db.execute('INSERT INTO sources(type, name, root, created_at) VALUES (?, ?, ?, ?)',
-        [type, name, root, _now()]);
+  int addSource({required String type, required String name, required String root, String? config}) {
+    _db.execute('INSERT INTO sources(type, name, root, created_at, config) VALUES (?, ?, ?, ?, ?)',
+        [type, name, root, _now(), config]);
     return _db.lastInsertRowId;
   }
+
+  SourceRow? source(int id) => sources().where((s) => s.id == id).firstOrNull;
 
   void deleteSource(int id) => _db.execute('DELETE FROM sources WHERE id = ?', [id]);
 

@@ -42,13 +42,21 @@ class SourceRow {
     required this.root,
     required this.itemCount,
     this.lastScanAt,
+    this.config,
   });
   final int id;
+
+  /// local / webdav / smb
   final String type;
   final String name;
   final String root;
   final int itemCount;
   final DateTime? lastScanAt;
+
+  /// 网络源连接配置（JSON）。
+  final String? config;
+
+  bool get isNetwork => type != 'local';
 }
 
 class MediaSummary {
