@@ -431,6 +431,50 @@ class SettingRow extends StatelessWidget {
   }
 }
 
+/// 开关（光色轨道 + 圆钮，不用 Material 默认样式）。
+class LightSwitch extends StatelessWidget {
+  const LightSwitch({super.key, required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = Motion.of(context, Motion.fast);
+    return Semantics(
+      toggled: value,
+      child: Pressable(
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        radius: 16,
+        hoverOverlay: false,
+        child: AnimatedContainer(
+          duration: d,
+          curve: Motion.curve,
+          width: 50,
+          height: 30,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: value ? Palette.light : Palette.surface3,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: AnimatedAlign(
+            duration: d,
+            curve: Motion.curve,
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: value ? Palette.onLight : Palette.text2,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 设置行左侧的图标方块。
 class IconTile extends StatelessWidget {
   const IconTile({super.key, required this.icon, this.size = 32, this.filled = false, this.color = Palette.text2});

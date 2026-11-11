@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,10 +11,13 @@ import '../../services/source_registry.dart';
 import '../../ui/artwork_tint.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
+import '../../widgets/av_blur.dart';
 import '../../widgets/media_image.dart';
 import '../player/play_actions.dart';
 import '../player/play_item.dart';
 import '../search/actor_page.dart';
+import 'edit_info_page.dart';
+import '../../app/app_settings.dart';
 import '../../widgets/poster_shelf.dart';
 
 class DetailPage extends ConsumerStatefulWidget {
@@ -251,6 +255,17 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ),
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 12,
+                right: g - 8,
+                child: _DetailMenu(
+                  d: d,
+                  watched: watched,
+                  onWatched: (w) => allPaths.isEmpty
+                      ? null
+                      : _setWatched(allPaths, w, message: w ? '已标为看过' : '已标为未看'),
+                ),
+              ),
             ],
           );
         },
@@ -380,7 +395,11 @@ class _Hero extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (hasBackdrop)
-            MediaImage(path: d.fanart, decodeWidth: size.width, alignment: const Alignment(0, -0.4))
+            AvBlur(
+              isAv: d.isAv,
+              sigma: 40,
+              child: MediaImage(path: d.fanart, decodeWidth: size.width, alignment: const Alignment(0, -0.4)),
+            )
           else if (d.poster != null)
             // 没有剧照：用海报做大面积虚化背景
             ImageFiltered(
@@ -429,10 +448,13 @@ class _Hero extends StatelessWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(Radii.poster),
-                      child: MediaImage(
-                        path: d.poster,
-                        decodeWidth: 190,
-                        placeholder: PosterPlaceholder(title: d.title),
+                      child: AvBlur(
+                        isAv: d.isAv,
+                        child: MediaImage(
+                          path: d.poster,
+                          decodeWidth: 190,
+                          placeholder: PosterPlaceholder(title: d.title),
+                        ),
                       ),
                     ),
                   ),
@@ -789,4 +811,110 @@ String formatSize(int bytes) {
     i++;
   }
   return '${v.toStringAsFixed(i >= 3 ? 2 : 0)} ${units[i]}';
+}
+
+enum _MenuAction { edit, rescan, watched, unwatched, online, av, remove }
+
+/// 详情页右上角的「…」（参照 VidHub）。
+class _DetailMenu extends ConsumerWidget {
+  const _DetailMenu({required this.d, required this.watched, required this.onWatched});
+  final MediaDetail d;
+  final bool watched;
+  final void Function(bool watched) onWatched;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final source = ref.read(dbProvider).source(d.sourceId);
+    final editBlocked = EditInfoPage.unsupportedReason(d, source);
+
+    Future<void> onSelected(_MenuAction a) async {
+      final messenger = ScaffoldMessenger.of(context);
+      switch (a) {
+        case _MenuAction.edit:
+          if (editBlocked != null) {
+            messenger.showSnackBar(SnackBar(content: Text(editBlocked)));
+          } else {
+            await EditInfoPage.open(context, d);
+          }
+        case _MenuAction.online:
+          if (editBlocked != null) {
+            messenger.showSnackBar(SnackBar(content: Text(editBlocked)));
+          } else if (ref.read(appSettingsProvider).autoScrape) {
+            await quickRescrape(context, ref, d); // 自动刮削开启：直接用 TMDB
+          } else {
+            await EditInfoPage.open(context, d, online: true); // 关闭：让用户选刮削源
+          }
+        case _MenuAction.rescan:
+          ref.read(scanProvider.notifier).scan(d.sourceId);
+          messenger.showSnackBar(SnackBar(content: Text('正在重新扫描「${source?.name ?? ''}」')));
+        case _MenuAction.av:
+          ref.read(dbProvider).setAv(d.id, !d.isAv);
+          ref.read(libraryRevisionProvider.notifier).bump();
+          messenger.showSnackBar(SnackBar(content: Text(d.isAv ? '已取消 AV 标记' : '已标记为 AV')));
+        case _MenuAction.watched:
+          onWatched(true);
+        case _MenuAction.unwatched:
+          onWatched(false);
+        case _MenuAction.remove:
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: Text('从媒体库中移除「${d.title}」？'),
+              content: const Text('只是不在片库里显示，文件不会被删除，之后重新扫描也不会再加回来。'
+                  '可以在「设置 › 媒体文件夹 › …」里恢复。'),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              actions: [
+                PillButton(label: '取消', primary: false, compact: true, onPressed: () => Navigator.pop(c, false)),
+                PillButton(label: '移除', compact: true, onPressed: () => Navigator.pop(c, true)),
+              ],
+            ),
+          );
+          if (ok != true || !context.mounted) return;
+          ref.read(dbProvider).excludeItem(d.id);
+          ref.read(libraryRevisionProvider.notifier).bump();
+          Navigator.of(context).maybePop();
+      }
+    }
+
+    PopupMenuItem<_MenuAction> item(_MenuAction v, String label,
+            {bool enabled = true, bool danger = false, String? note}) =>
+        PopupMenuItem(
+          value: v,
+          enabled: enabled,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(label,
+                style: TypeScale.callout.copyWith(
+                    fontSize: 15, color: danger ? Palette.danger : (note != null ? Palette.text3 : null))),
+            if (note != null) Text(note, style: TypeScale.caption.copyWith(fontSize: 11.5, color: Palette.text3)),
+          ]),
+        );
+    final fileMissing = d.files.isNotEmpty && !(source?.isNetwork ?? false) && !File(d.files.first.path).existsSync();
+    final scrapeNote = fileMissing ? '文件不存在' : null;
+
+    return PopupMenuButton<_MenuAction>(
+      tooltip: '更多',
+      offset: const Offset(0, 52),
+      onSelected: onSelected,
+      itemBuilder: (_) => [
+        item(_MenuAction.edit, '编辑信息', note: scrapeNote),
+        item(_MenuAction.rescan, '重新扫描文件'),
+        item(_MenuAction.watched, '标记为已观看', enabled: !watched),
+        item(_MenuAction.unwatched, '标记为未观看', enabled: watched),
+        item(_MenuAction.online, '使用在线影视数据', note: scrapeNote),
+        item(_MenuAction.av, d.isAv ? '取消 AV 标记' : '标记为 AV'),
+        item(_MenuAction.remove, '从媒体库中移除', danger: true),
+      ],
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: Palette.shade(0.35)),
+            child: const Icon(Icons.more_horiz_rounded, color: Palette.text),
+          ),
+        ),
+      ),
+    );
+  }
 }

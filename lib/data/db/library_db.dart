@@ -11,7 +11,7 @@ class LibraryDb {
 
   final Database _db;
 
-  static const _schemaVersion = 5;
+  static const _schemaVersion = 7;
 
   static LibraryDb open(String path) {
     final db = sqlite3.open(path);
@@ -51,6 +51,25 @@ class LibraryDb {
     if (v < 5) {
       // 网络源的连接配置（JSON：地址、用户名、密码等）
       _db.execute('ALTER TABLE sources ADD COLUMN config TEXT');
+    }
+    if (v < 6) {
+      // 「从媒体库中移除」的条目：重新扫描时跳过
+      _db.execute('''CREATE TABLE IF NOT EXISTS excluded_items (
+        source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        title TEXT,
+        PRIMARY KEY (source_id, key))''');
+    }
+    if (v < 7) {
+      _db.execute('''
+        ALTER TABLE items ADD COLUMN is_av INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE IF NOT EXISTS av_overrides (
+          source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+          key TEXT NOT NULL,
+          is_av INTEGER NOT NULL,
+          PRIMARY KEY (source_id, key));
+        CREATE TABLE IF NOT EXISTS auto_scrape_attempts (path TEXT PRIMARY KEY, at INTEGER NOT NULL);
+      ''');
     }
     _db.execute('PRAGMA user_version = $_schemaVersion;');
   }
@@ -195,6 +214,9 @@ class LibraryDb {
   int beginScan() => _now();
 
   void writeItem(int sourceId, ScannedItem item, int scanStamp) {
+    if (_db.select('SELECT 1 FROM excluded_items WHERE source_id = ? AND key = ?', [sourceId, item.key]).isNotEmpty) {
+      return; // 用户从媒体库移除过
+    }
     final nfo = item.nfo;
     final kind = item is ScannedShow ? 'show' : 'movie';
     _db.execute('BEGIN');
@@ -202,8 +224,8 @@ class LibraryDb {
       _db.execute('''
         INSERT INTO items(source_id, key, kind, title, original_title, sort_title, year, plot,
           tagline, rating, runtime, premiered, mpaa, set_name, status, genres, countries, studios,
-          directors, writers, tags, unique_ids, poster, fanart, logo, dir, nfo_path, added_at, scanned_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          directors, writers, tags, unique_ids, poster, fanart, logo, dir, nfo_path, added_at, scanned_at, is_av)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(source_id, key) DO UPDATE SET
           kind=excluded.kind, title=excluded.title, original_title=excluded.original_title,
           sort_title=excluded.sort_title, year=excluded.year, plot=excluded.plot,
@@ -213,7 +235,7 @@ class LibraryDb {
           studios=excluded.studios, directors=excluded.directors, writers=excluded.writers,
           tags=excluded.tags, unique_ids=excluded.unique_ids, poster=excluded.poster,
           fanart=excluded.fanart, logo=excluded.logo, dir=excluded.dir,
-          nfo_path=excluded.nfo_path, scanned_at=excluded.scanned_at
+          nfo_path=excluded.nfo_path, scanned_at=excluded.scanned_at, is_av=excluded.is_av
       ''', [
         sourceId, item.key, kind, item.title, nfo?.originalTitle, nfo?.sortTitle, item.year,
         nfo?.plot, nfo?.tagline, nfo?.rating, nfo?.runtime, nfo?.premiered, nfo?.mpaa,
@@ -221,6 +243,7 @@ class LibraryDb {
         _list(nfo?.studios), _list(nfo?.directors), _list(nfo?.writers), _list(nfo?.tags),
         nfo == null || nfo.uniqueIds.isEmpty ? null : jsonEncode(nfo.uniqueIds),
         item.poster, item.fanart, item.logo, item.dir, item.nfoPath, scanStamp, scanStamp,
+        _isAv(sourceId, item) ? 1 : 0,
       ]);
       final id = _db
           .select('SELECT id FROM items WHERE source_id = ? AND key = ?', [sourceId, item.key])
@@ -278,7 +301,7 @@ class LibraryDb {
 
   static const _summaryCols = '''i.id, i.kind, i.title, i.original_title, i.sort_title, i.year, i.rating,
       i.poster, i.fanart, i.logo, i.genres, i.added_at,
-      EXISTS(SELECT 1 FROM favorites fv WHERE fv.item_id = i.id) AS favorite,
+      EXISTS(SELECT 1 FROM favorites fv WHERE fv.item_id = i.id) AS favorite, i.is_av,
       (SELECT COUNT(*) FROM episodes e WHERE e.item_id = i.id) AS episode_count,
       (SELECT COUNT(*) FROM playback_state ps WHERE ps.finished = 1 AND ps.path IN
         (SELECT path FROM files WHERE item_id = i.id
@@ -432,12 +455,64 @@ class LibraryDb {
     return list;
   }
 
+  /// AV 识别：资料来自 JavBus / R18.dev（NFO 里有番号 uniqueid "num"，花栗鼠整理的也一样），
+  /// 或 NFO 带 AV 标签；用户手动设置过的以手动为准。
+  bool _isAv(int sourceId, ScannedItem item) {
+    final o = _db.select('SELECT is_av FROM av_overrides WHERE source_id = ? AND key = ?', [sourceId, item.key]);
+    if (o.isNotEmpty) return o.first['is_av'] == 1;
+    final nfo = item.nfo;
+    if (nfo == null) return false;
+    return nfo.uniqueIds.containsKey('num') || nfo.tags.any((t) => t.toUpperCase() == 'AV');
+  }
+
+  /// 手动设置 / 取消 AV 标记（重新扫描后保持）。
+  void setAv(int itemId, bool isAv) {
+    final r = _db.select('SELECT source_id, key FROM items WHERE id = ?', [itemId]).firstOrNull;
+    if (r == null) return;
+    _db.execute('INSERT OR REPLACE INTO av_overrides(source_id, key, is_av) VALUES (?, ?, ?)',
+        [r['source_id'], r['key'], isAv ? 1 : 0]);
+    _db.execute('UPDATE items SET is_av = ? WHERE id = ?', [isAv ? 1 : 0, itemId]);
+  }
+
+  // ------------------------------------------------------------ 自动刮削
+
+  /// 某个本地源里还没有 NFO、也没自动刮削过的电影（每个文件只自动尝试一次）。
+  List<({int id, String title, int? year, String path})> autoScrapeCandidates(int sourceId) => _db
+      .select('''SELECT i.id, i.title, i.year, (SELECT path FROM files f WHERE f.item_id = i.id ORDER BY path LIMIT 1) AS path
+          FROM items i WHERE i.source_id = ? AND i.kind = 'movie' AND i.nfo_path IS NULL''', [sourceId])
+      .where((r) => r['path'] != null)
+      .where((r) => _db.select('SELECT 1 FROM auto_scrape_attempts WHERE path = ?', [r['path']]).isEmpty)
+      .map((r) => (id: r['id'] as int, title: r['title'] as String, year: r['year'] as int?, path: r['path'] as String))
+      .toList();
+
+  void markAutoScrapeAttempt(String path) => _db.execute(
+      'INSERT OR REPLACE INTO auto_scrape_attempts(path, at) VALUES (?, ?)', [path, _now()]);
+
+  /// 从媒体库移除（不删文件），以后重新扫描也不会再加回来。
+  void excludeItem(int id) {
+    final r = _db.select('SELECT source_id, key, title FROM items WHERE id = ?', [id]).firstOrNull;
+    if (r == null) return;
+    _db.execute('INSERT OR REPLACE INTO excluded_items(source_id, key, title) VALUES (?, ?, ?)',
+        [r['source_id'], r['key'], r['title']]);
+    _db.execute('DELETE FROM items WHERE id = ?', [id]);
+  }
+
+  int excludedCount(int sourceId) =>
+      _db.select('SELECT COUNT(*) AS n FROM excluded_items WHERE source_id = ?', [sourceId]).first['n'] as int;
+
+  /// 恢复某个媒体源下所有被移除的条目（下次扫描时重新加入）。
+  void restoreExcluded(int sourceId) => _db.execute('DELETE FROM excluded_items WHERE source_id = ?', [sourceId]);
+
   MediaDetail? detail(int id) {
     final rows = _db.select('SELECT * FROM items WHERE id = ?', [id]);
     if (rows.isEmpty) return null;
     final r = rows.first;
     return MediaDetail(
       id: id,
+      sourceId: r['source_id'] as int,
+      nfoPath: r['nfo_path'] as String?,
+      isAv: r['is_av'] == 1,
+      tags: _split(r['tags']),
       kind: r['kind'] == 'show' ? MediaKind.show : MediaKind.movie,
       title: r['title'] as String,
       originalTitle: r['original_title'] as String?,
@@ -520,6 +595,11 @@ class LibraryDb {
         [path, positionMs, durationMs, finished ? 1 : 0, _now()]);
   }
 
+  /// 文件被整理（移动）后，把播放进度迁移到新路径。
+  void movePlaybackPath(String from, String to) {
+    _db.execute('UPDATE OR IGNORE playback_state SET path = ? WHERE path = ?', [to, from]);
+  }
+
   void setWatched(List<String> paths, bool watched) {
     _db.execute('BEGIN');
     for (final path in paths) {
@@ -553,14 +633,14 @@ class LibraryDb {
       final finished = r['finished'] == 1;
       final pos = r['position_ms'] as int;
       final dur = r['duration_ms'] as int;
-      final item = _db.select('SELECT title, poster, fanart FROM items WHERE id = ?', [itemId]);
+      final item = _db.select('SELECT title, poster, fanart, is_av FROM items WHERE id = ?', [itemId]);
       if (item.isEmpty) continue;
       final it = item.first;
 
       if (movieItem != null) {
         if (finished || pos < 30000) continue;
         out.add(ContinueItem(
-          itemId: itemId, kind: MediaKind.movie, title: it['title'] as String,
+          itemId: itemId, kind: MediaKind.movie, title: it['title'] as String, isAv: it['is_av'] == 1,
           poster: it['poster'] as String?, fanart: it['fanart'] as String?,
           path: r['path'] as String, positionMs: pos, durationMs: dur,
         ));
@@ -589,7 +669,7 @@ class LibraryDb {
         final s = target['season'] as int;
         final e = target['episode'] as int?;
         out.add(ContinueItem(
-          itemId: itemId, kind: MediaKind.show, title: it['title'] as String,
+          itemId: itemId, kind: MediaKind.show, title: it['title'] as String, isAv: it['is_av'] == 1,
           poster: it['poster'] as String?, fanart: target['thumb'] as String? ?? it['fanart'] as String?,
           path: target['path'] as String, positionMs: tPos, durationMs: tDur,
           episodeLabel: '${isNext ? '下一集 · ' : ''}S${s.toString().padLeft(2, '0')}'
@@ -629,6 +709,7 @@ class LibraryDb {
         logo: r['logo'] as String?,
         genres: _split(r['genres']),
         favorite: r['favorite'] == 1,
+        isAv: r['is_av'] == 1,
         episodeCount: r['episode_count'] as int,
         watchedCount: r['watched_count'] as int,
         progress: (r['progress'] as num?)?.toDouble(),

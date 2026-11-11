@@ -9,6 +9,7 @@ import '../../app/providers.dart';
 import '../../data/db/models.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
+import '../../widgets/av_blur.dart';
 import '../../widgets/media_image.dart';
 import '../../widgets/poster_card.dart';
 import '../detail/detail_page.dart';
@@ -389,10 +390,13 @@ class _TopResult extends StatelessWidget {
             borderRadius: BorderRadius.circular(Radii.card),
             border: Border.all(color: Palette.hairline),
           ),
-          child: MediaImage(
-            path: item.fanart ?? item.poster,
-            decodeWidth: 480,
-            placeholder: PosterPlaceholder(title: item.title),
+          child: AvBlur(
+            isAv: item.isAv,
+            child: MediaImage(
+              path: item.fanart ?? item.poster,
+              decodeWidth: 480,
+              placeholder: PosterPlaceholder(title: item.title),
+            ),
           ),
         ),
       ),

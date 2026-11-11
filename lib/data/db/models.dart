@@ -75,6 +75,7 @@ class MediaSummary {
     this.logo,
     this.genres = const [],
     this.favorite = false,
+    this.isAv = false,
   });
   final int id;
   final MediaKind kind;
@@ -87,6 +88,7 @@ class MediaSummary {
   final String? logo;
   final List<String> genres;
   final bool favorite;
+  final bool isAv;
   final int episodeCount;
   final int watchedCount;
 
@@ -128,7 +130,9 @@ class ContinueItem {
     this.poster,
     this.fanart,
     this.episodeLabel,
+    this.isAv = false,
   });
+  final bool isAv;
   final int itemId;
   final MediaKind kind;
   final String title;
@@ -194,6 +198,10 @@ class EpisodeRow {
 class MediaDetail {
   const MediaDetail({
     required this.id,
+    required this.sourceId,
+    this.nfoPath,
+    this.isAv = false,
+    this.tags = const [],
     required this.kind,
     required this.title,
     required this.dir,
@@ -220,6 +228,10 @@ class MediaDetail {
     this.logo,
   });
   final int id;
+  final int sourceId;
+  final String? nfoPath;
+  final bool isAv;
+  final List<String> tags;
   final MediaKind kind;
   final String title;
   final String? originalTitle;

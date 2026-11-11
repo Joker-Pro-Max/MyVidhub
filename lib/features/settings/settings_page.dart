@@ -3,12 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../app/app_shell.dart';
+import '../../app/app_settings.dart';
+import '../../app/auto_scrape.dart';
 import '../../app/providers.dart';
 import '../../data/db/models.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
 import '../../data/sources/network_config.dart';
 import '../../services/source_registry.dart';
+import '../organize/organize_page.dart';
 import 'add_network_source.dart';
 import 'add_source.dart';
 import 'folder_browser.dart';
@@ -25,6 +28,8 @@ class SettingsPage extends ConsumerWidget {
     final scan = ref.watch(scanProvider);
     final db = ref.watch(dbProvider);
     ref.watch(libraryRevisionProvider);
+    final settings = ref.watch(appSettingsProvider);
+    final auto = ref.watch(autoScrapeProvider);
     final roots = ref.watch(storageRootsProvider).value ?? const <StorageRoot>[];
     final insets = ShellInsets.of(context);
     final g = FormFactor.of(context).gutter;
@@ -63,7 +68,7 @@ class SettingsPage extends ConsumerWidget {
                       ),
                 footer: [
                   if (!scan.running && scan.lastMessage != null) scan.lastMessage!,
-                  '支持 Kodi、Jellyfin、Emby、tinyMediaManager 整理的目录：读取 NFO、海报、剧照、季海报和集缩略图。只读取，不会改动文件。',
+                  '支持 Kodi、Jellyfin、Emby、tinyMediaManager 整理的目录：读取 NFO、海报、剧照、季海报和集缩略图。扫描只读取；「…」里的「刮削并整理」会移动文件，可撤销。',
                 ].join('\n'),
                 children: [
                   for (final s in sources.where((s) => !s.isNetwork))
@@ -108,6 +113,56 @@ class SettingsPage extends ConsumerWidget {
               ),
               const SizedBox(height: 32),
 
+              GroupedList(
+                header: '刮削',
+                footer: [
+                  if (auto.running) '正在自动刮削 ${auto.done + 1} / ${auto.total}${auto.current != null ? ' · ${auto.current}' : ''}',
+                  if (!auto.running && auto.message != null) auto.message!,
+                  settings.autoScrape
+                      ? '自动刮削开启时，扫描后会用 TMDB 为没有资料的电影补全 NFO、海报和背景图（视频不移动，可在「刮削并整理」页撤销）。番号片请关闭自动刮削后手动选择 JavBus / R18.dev。'
+                      : '自动刮削已关闭：在「编辑信息」「刮削并整理」里自己选择 JavBus、R18.dev 或 TMDB。',
+                  'TMDB API Key（v3）可在 themoviedb.org › 设置 › API 免费申请。',
+                ].join('\n'),
+                children: [
+                  SettingRow(
+                    icon: Icons.auto_awesome_rounded,
+                    title: '自动刮削',
+                    subtitle: settings.autoScrape ? '使用在线影视数据（TMDB）' : '关闭 · 刮削时自己选择刮削源',
+                    trailing: LightSwitch(
+                      value: settings.autoScrape,
+                      onChanged: (v) {
+                        ref.read(appSettingsProvider.notifier).setAutoScrape(v);
+                        if (v) {
+                          for (final s in sources) {
+                            ref.read(autoScrapeProvider.notifier).afterScan(s.id);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  SettingRow(
+                    icon: Icons.key_rounded,
+                    title: 'TMDB API Key',
+                    subtitle: (db.setting(tmdbKeySetting) ?? '').trim().isNotEmpty
+                        ? '已设置（自己的 Key）'
+                        : builtInTmdbKey.isNotEmpty
+                            ? '使用内置 Key · 也可以填自己的'
+                            : '未设置',
+                    onTap: () => _editTmdbKey(context, ref),
+                  ),
+                  SettingRow(
+                    icon: Icons.blur_on_rounded,
+                    title: 'AV 模糊显示',
+                    subtitle: '资料来自 JavBus / R18.dev 的影片自动标记为 AV，海报和剧照模糊显示',
+                    trailing: LightSwitch(
+                      value: settings.blurAv,
+                      onChanged: (v) => ref.read(appSettingsProvider.notifier).setBlurAv(v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
               const UpdateSection(),
             ]),
           ),
@@ -115,6 +170,38 @@ class SettingsPage extends ConsumerWidget {
       ],
     );
   }
+}
+
+Future<void> _editTmdbKey(BuildContext context, WidgetRef ref) async {
+  final db = ref.read(dbProvider);
+  final controller = TextEditingController(text: db.setting(tmdbKeySetting) ?? '');
+  final result = await showDialog<String>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('TMDB API Key'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(builtInTmdbKey.isNotEmpty
+            ? 'App 已内置一个 Key，留空即可使用。也可以填自己的 v3 API Key（只保存在这台设备上）。'
+            : '填写 v3 的 API Key（32 位字母数字）。只保存在这台设备上。'),
+        const SizedBox(height: 14),
+        TextField(
+          controller: controller,
+          autocorrect: false,
+          enableSuggestions: false,
+          style: TypeScale.callout.copyWith(fontSize: 15),
+          decoration: const InputDecoration(hintText: '例如 1a2b3c…'),
+        ),
+      ]),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      actions: [
+        PillButton(label: '取消', primary: false, compact: true, onPressed: () => Navigator.pop(c)),
+        PillButton(label: '保存', compact: true, onPressed: () => Navigator.pop(c, controller.text.trim())),
+      ],
+    ),
+  );
+  if (result == null) return;
+  db.setSetting(tmdbKeySetting, result.isEmpty ? null : result);
+  ref.read(libraryRevisionProvider.notifier).bump();
 }
 
 class _HeaderAction extends StatelessWidget {
@@ -133,7 +220,7 @@ class _HeaderAction extends StatelessWidget {
       );
 }
 
-enum _FolderAction { rescan, remove }
+enum _FolderAction { organize, rescan, restore, remove }
 
 class _FolderRow extends ConsumerWidget {
   const _FolderRow({
@@ -205,15 +292,32 @@ class _FolderRow extends ConsumerWidget {
           tooltip: '更多操作',
           offset: const Offset(0, 40),
           onSelected: (a) => switch (a) {
+            _FolderAction.organize => OrganizePage.open(context, source),
             _FolderAction.rescan => ref.read(scanProvider.notifier).scan(source.id),
+            _FolderAction.restore => () {
+                ref.read(dbProvider).restoreExcluded(source.id);
+                ref.read(scanProvider.notifier).scan(source.id);
+              }(),
             _FolderAction.remove => _confirmDelete(context, ref),
           },
           itemBuilder: (_) => [
+            if (!source.isNetwork)
+              PopupMenuItem(
+                value: _FolderAction.organize,
+                enabled: !scanning,
+                child: const _MenuRow(icon: Icons.auto_fix_high_rounded, label: '刮削并整理…'),
+              ),
             PopupMenuItem(
               value: _FolderAction.rescan,
               enabled: !scanning && !queued,
               child: const _MenuRow(icon: Icons.refresh_rounded, label: '重新扫描'),
             ),
+            if (ref.read(dbProvider).excludedCount(source.id) case final n when n > 0)
+              PopupMenuItem(
+                value: _FolderAction.restore,
+                enabled: !scanning,
+                child: _MenuRow(icon: Icons.restore_rounded, label: '恢复已移除的影片（$n）'),
+              ),
             PopupMenuItem(
               value: _FolderAction.remove,
               enabled: !scanning,

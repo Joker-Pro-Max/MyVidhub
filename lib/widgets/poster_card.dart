@@ -3,12 +3,26 @@ import 'package:flutter/material.dart';
 import '../data/db/models.dart';
 import '../ui/components.dart';
 import '../ui/tokens.dart';
+import 'av_blur.dart';
 import 'media_image.dart';
 
 /// 海报卡片：2:3 海报 + 标题 + 年份。
 /// 悬停 / 焦点时轻微放大并加光圈；已看完 = 小勾，看了一半 = 底部细进度条。
 class PosterCard extends StatefulWidget {
-  const PosterCard({super.key, required this.item, required this.width, required this.onTap});
+  const PosterCard({
+    super.key,
+    required this.item,
+    required this.width,
+    required this.onTap,
+    this.onLongPress,
+    this.selected,
+  });
+
+  /// 长按（进入多选）。
+  final VoidCallback? onLongPress;
+
+  /// 多选模式下是否选中；null 表示不在多选模式。
+  final bool? selected;
 
   final MediaSummary item;
   final double width;
@@ -52,6 +66,7 @@ class _PosterCardState extends State<PosterCard> {
         },
         child: GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           onTapDown: (_) => setState(() => _down = true),
           onTapUp: (_) => setState(() => _down = false),
           onTapCancel: () => setState(() => _down = false),
@@ -80,18 +95,22 @@ class _PosterCardState extends State<PosterCard> {
                   foregroundDecoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(Radii.poster),
                     border: Border.all(
-                      color: _lift ? Palette.light : Palette.hairline,
-                      width: _lift ? 2 : 1,
+                      color: _lift || widget.selected == true ? Palette.light : Palette.hairline,
+                      width: _lift || widget.selected == true ? 2 : 1,
                     ),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(Radii.poster),
                     child: Stack(fit: StackFit.expand, children: [
-                      MediaImage(
-                        path: item.poster,
-                        decodeWidth: widget.width,
-                        placeholder: PosterPlaceholder(title: item.title),
+                      AvBlur(
+                        isAv: item.isAv,
+                        child: MediaImage(
+                          path: item.poster,
+                          decodeWidth: widget.width,
+                          placeholder: PosterPlaceholder(title: item.title),
+                        ),
                       ),
+                      if (item.isAv) const Positioned(top: 8, left: 8, child: AvBadge()),
                       if (item.watched)
                         const Positioned(top: 8, right: 8, child: WatchedMark(size: 20)),
                       if (item.unwatchedEpisodes > 0)
@@ -116,6 +135,30 @@ class _PosterCardState extends State<PosterCard> {
                           bottom: 8,
                           child: ProgressHairline(value: item.progress!),
                         ),
+                      // 多选：未选中的压暗，右下角圆形勾选框
+                      if (widget.selected != null) ...[
+                        AnimatedContainer(
+                          duration: fast,
+                          color: widget.selected! ? Palette.shade(0) : Palette.shade(0.45),
+                        ),
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          child: AnimatedContainer(
+                            duration: fast,
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: widget.selected! ? Palette.light : Palette.shade(0.4),
+                              border: Border.all(color: Palette.light, width: 1.5),
+                            ),
+                            child: widget.selected!
+                                ? const Icon(Icons.check_rounded, size: 18, color: Palette.onLight)
+                                : null,
+                          ),
+                        ),
+                      ],
                     ]),
                   ),
                 ),
@@ -141,7 +184,19 @@ class _PosterCardState extends State<PosterCard> {
 
 /// 自适应海报网格：根据可用宽度计算列数（手机 3 列、平板 5–7 列、桌面更多）。
 class PosterGrid extends StatelessWidget {
-  const PosterGrid({super.key, required this.items, required this.onTap, this.bottom = 32});
+  const PosterGrid({
+    super.key,
+    required this.items,
+    required this.onTap,
+    this.bottom = 32,
+    this.onLongPress,
+    this.selectedIds,
+  });
+
+  final void Function(MediaSummary)? onLongPress;
+
+  /// 多选模式下已选中的 id；null 表示不在多选模式。
+  final Set<int>? selectedIds;
 
   final List<MediaSummary> items;
   final void Function(MediaSummary) onTap;
@@ -170,7 +225,13 @@ class PosterGrid extends StatelessWidget {
             mainAxisExtent: PosterCard.heightFor(cellW),
           ),
           itemCount: items.length,
-          itemBuilder: (context, i) => PosterCard(item: items[i], width: cellW, onTap: () => onTap(items[i])),
+          itemBuilder: (context, i) => PosterCard(
+            item: items[i],
+            width: cellW,
+            onTap: () => onTap(items[i]),
+            onLongPress: onLongPress == null ? null : () => onLongPress!(items[i]),
+            selected: selectedIds?.contains(items[i].id),
+          ),
         ),
       );
     });

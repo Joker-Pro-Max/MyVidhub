@@ -7,6 +7,8 @@ import '../../data/db/models.dart';
 import '../../services/source_registry.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
+import '../../app/app_settings.dart';
+import '../../widgets/av_blur.dart';
 import '../../widgets/media_image.dart';
 import '../../widgets/poster_shelf.dart';
 import '../detail/detail_page.dart';
@@ -34,7 +36,13 @@ class HomePage extends ConsumerWidget {
         .where((m) => m.rating != null)
         .toList();
 
-    final heroes = _heroEntries(cont, movies, shows);
+    // AV 模糊显示开启时，首页大图不放 AV（整屏模糊图不好看）
+    final hideAv = ref.watch(appSettingsProvider).blurAv;
+    final heroes = _heroEntries(
+      cont.where((c) => !hideAv || !c.isAv).toList(),
+      movies.where((m) => !hideAv || !m.isAv).toList(),
+      shows.where((m) => !hideAv || !m.isAv).toList(),
+    );
     final g = FormFactor.of(context).gutter;
 
     return CustomScrollView(
@@ -371,10 +379,13 @@ class _ContinueCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(Radii.card),
               child: Stack(fit: StackFit.expand, children: [
-                MediaImage(
-                  path: c.fanart ?? c.poster,
-                  decodeWidth: width,
-                  placeholder: PosterPlaceholder(title: c.title),
+                AvBlur(
+                  isAv: c.isAv,
+                  child: MediaImage(
+                    path: c.fanart ?? c.poster,
+                    decodeWidth: width,
+                    placeholder: PosterPlaceholder(title: c.title),
+                  ),
                 ),
                 DecoratedBox(
                   decoration: BoxDecoration(

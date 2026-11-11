@@ -75,4 +75,67 @@ void main() {
     // 同为科幻，但已在同系列里，不重复出现在"更多类似"
     expect(db.similar(avatar).map((m) => m.title), isNot(contains('盗梦空间')));
   });
+
+  test('从媒体库移除后，重新扫描不会加回来；恢复后重新出现', () async {
+    final id = idOf(MediaKind.movie, '阿凡达');
+    db.excludeItem(id);
+    expect(db.listItems(kind: MediaKind.movie).any((m) => m.title == '阿凡达'), isFalse);
+
+    Future<void> rescan() async {
+      final src = db.sources().single;
+      final stamp = db.beginScan();
+      await for (final item in LibraryScanner(LocalSource(src.root)).scan()) {
+        db.writeItem(src.id, item, stamp);
+      }
+      db.finishScan(src.id, stamp);
+    }
+
+    await rescan();
+    expect(db.listItems(kind: MediaKind.movie).any((m) => m.title == '阿凡达'), isFalse);
+    final sid = db.sources().single.id;
+    expect(db.excludedCount(sid), 1);
+    db.restoreExcluded(sid);
+    await rescan();
+    expect(db.listItems(kind: MediaKind.movie).any((m) => m.title == '阿凡达'), isTrue);
+  });
+
+  Future<void> rescanAll() async {
+    final src = db.sources().single;
+    final stamp = db.beginScan();
+    await for (final item in LibraryScanner(LocalSource(src.root)).scan()) {
+      db.writeItem(src.id, item, stamp);
+    }
+    db.finishScan(src.id, stamp);
+  }
+
+  test('AV 识别：NFO 带番号 uniqueid 自动标记；手动取消后重新扫描保持', () async {
+    final root = db.sources().single.root;
+    final dir = Directory(p.join(root, '电影', 'SSIS-001 (2021)'))..createSync(recursive: true);
+    File(p.join(dir.path, 'SSIS-001 (2021).mp4')).writeAsStringSync('');
+    File(p.join(dir.path, 'SSIS-001 (2021).nfo')).writeAsStringSync(
+        '<movie><title>番号片</title><uniqueid type="num" default="true">SSIS-001</uniqueid></movie>');
+    await rescanAll();
+
+    MediaSummary av() => db.listItems(kind: MediaKind.movie).firstWhere((m) => m.title == '番号片');
+    expect(av().isAv, isTrue);
+    expect(db.listItems(kind: MediaKind.movie).firstWhere((m) => m.title == '阿凡达').isAv, isFalse);
+
+    db.setAv(av().id, false);
+    expect(av().isAv, isFalse);
+    await rescanAll();
+    expect(av().isAv, isFalse, reason: '手动取消后重新扫描不会被改回');
+    db.setAv(av().id, true);
+    expect(db.detail(av().id)!.isAv, isTrue);
+  });
+
+  test('自动刮削候选：没有 NFO 的电影，每个文件只尝试一次', () {
+    final sid = db.sources().single.id;
+    final first = db.autoScrapeCandidates(sid);
+    expect(first.map((c) => c.title), containsAll(['The Matrix', '老电影']));
+    expect(first.map((c) => c.title), isNot(contains('阿凡达')), reason: '有 NFO 的不算');
+    for (final c in first) {
+      db.markAutoScrapeAttempt(c.path);
+    }
+    expect(db.autoScrapeCandidates(sid), isEmpty);
+  });
 }

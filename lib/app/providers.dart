@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/library_db.dart';
 import '../data/db/models.dart';
 import '../services/scan_service.dart';
+import 'auto_scrape.dart';
 
 /// 在 main() 中初始化后通过 overrides 注入。
 final dbPathProvider = Provider<String>((ref) => throw UnimplementedError());
@@ -94,12 +95,13 @@ final genreTilesProvider = Provider<List<GenreTile>>((ref) {
   for (final m in all) {
     for (final g in m.genres) {
       count[g] = (count[g] ?? 0) + 1;
-      if (m.fanart != null) image.putIfAbsent(g, () => m.fanart!); // 优先剧照（列表已按评分排序）
+      // 优先剧照（列表已按评分排序）；类型封面不用 AV 的图
+      if (m.fanart != null && !m.isAv) image.putIfAbsent(g, () => m.fanart!);
     }
   }
   for (final m in all) {
     for (final g in m.genres) {
-      if (m.poster != null) image.putIfAbsent(g, () => m.poster!); // 没有剧照时退回海报
+      if (m.poster != null && !m.isAv) image.putIfAbsent(g, () => m.poster!); // 没有剧照时退回海报
     }
   }
   final genres = count.keys.toList()..sort((a, b) => count[b]!.compareTo(count[a]!));
@@ -220,6 +222,8 @@ class ScanController extends Notifier<ScanState> {
         _sub?.cancel();
         ref.read(libraryRevisionProvider.notifier).bump();
         _next(state.queue, e.error ?? '「${source.name}」扫描完成，共 ${e.found} 个条目');
+        // 自动刮削：扫描完为没有 NFO 的电影补资料（设置里可关闭）
+        if (e.error == null) ref.read(autoScrapeProvider.notifier).afterScan(sourceId);
         return;
       }
       state = ScanState(sourceId: sourceId, dir: e.dir, found: e.found, queue: state.queue);

@@ -5,6 +5,7 @@
 #   例：tool/release.sh 1.0.1 "修复字幕方块；新增长按标记已看"
 #
 # 前提：gh 已登录且有本仓库写权限；工作区已提交干净
+# 可选：.secrets/tmdb_api_key 放 TMDB v3 Key，会作为默认 Key 打包进 App（不进 git）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,7 +25,15 @@ trap 'git checkout -- pubspec.yaml 2>/dev/null || true' ERR
 sed -i '' -E "s/^version: .*/version: $VERSION+$BUILD/" pubspec.yaml
 
 export LANG=en_US.UTF-8
-flutter build apk --release --split-per-abi
+# 内置的默认 TMDB Key：只存在本机 .secrets/（git 已忽略），打包时编译进 App，源码里没有
+DEFINES=()
+if [[ -s .secrets/tmdb_api_key ]]; then
+  DEFINES+=(--dart-define=TMDB_API_KEY="$(tr -d '[:space:]' < .secrets/tmdb_api_key)")
+  echo "==> 内置 TMDB Key：是"
+else
+  echo "==> 内置 TMDB Key：否（.secrets/tmdb_api_key 不存在，用户需要自己在设置里填）"
+fi
+flutter build apk --release --split-per-abi "${DEFINES[@]}"
 
 OUT=build/app/outputs/flutter-apk
 mkdir -p dist
