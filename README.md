@@ -34,6 +34,17 @@ Flutter 开发，一套代码支持 Android 平板 / 手机、iPad / iPhone、Wi
 - 首页「继续观看」（剧集看完一集自动推荐下一集）；海报进度条 / 已看标记；详情页「继续播放 / 继续 S01E03」「标记已看」
 - 剧集列表长按某一集可切换已看 / 未看
 
+## 自动更新 ✅
+
+- 安卓端启动后自动检查 [GitHub Releases](https://github.com/Joker-Pro-Max/MyVidhub/releases)（每 6 小时最多一次），发现新版本弹窗说明，App 内下载、校验 SHA-256 后调起系统安装器
+- 设置 → 版本与更新：查看当前版本、手动检查
+
+发布新版本（自动改版本号、打包、打 tag、上传 Release）：
+
+```bash
+tool/release.sh 1.0.2 "更新说明"
+```
+
 ## 运行
 
 ```bash
@@ -85,7 +96,8 @@ lib/
   features/                 home / library / detail / settings / player
   widgets/                  海报卡片、图片组件
 test/                       单元测试（含模拟媒体库生成器）
-integration_test/           多尺寸截图测试
+integration_test/           多尺寸截图、播放器端到端、自动更新联网测试
+tool/release.sh             一键发布
 ```
 
 ## 许可证
