@@ -11,7 +11,7 @@ class LibraryDb {
 
   final Database _db;
 
-  static const _schemaVersion = 2;
+  static const _schemaVersion = 3;
 
   static LibraryDb open(String path) {
     final db = sqlite3.open(path);
@@ -36,7 +36,26 @@ class LibraryDb {
         CREATE INDEX IF NOT EXISTS idx_playback_updated ON playback_state(updated_at DESC);
       ''');
     }
+    if (v < 3) {
+      _db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
+    }
     _db.execute('PRAGMA user_version = $_schemaVersion;');
+  }
+
+  // ------------------------------------------------------------ 设置
+
+  String? setting(String key) {
+    final r = _db.select('SELECT value FROM settings WHERE key = ?', [key]);
+    return r.isEmpty ? null : r.first['value'] as String?;
+  }
+
+  void setSetting(String key, String? value) {
+    if (value == null) {
+      _db.execute('DELETE FROM settings WHERE key = ?', [key]);
+    } else {
+      _db.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
+          'ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, value]);
+    }
   }
 
   void _createV1() {

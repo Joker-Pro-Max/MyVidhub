@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/models.dart';
 import '../home/home_page.dart';
 import 'add_source.dart';
+import 'update_ui.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -56,6 +57,10 @@ class SettingsPage extends ConsumerWidget {
           Text(scan.lastMessage!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
         ],
         const SizedBox(height: 28),
+        Text('版本与更新', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        const UpdateSection(),
+        const SizedBox(height: 28),
         Text('关于', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
         Card(
@@ -63,8 +68,8 @@ class SettingsPage extends ConsumerWidget {
           child: Column(children: [
             ListTile(
               leading: const Icon(Icons.info_outline),
-              title: const Text('MyVidhub'),
-              subtitle: Text('M1 · 电影 ${ref.watch(dbProvider).count(MediaKind.movie)} 部 · '
+              title: const Text('媒体库'),
+              subtitle: Text('电影 ${ref.watch(dbProvider).count(MediaKind.movie)} 部 · '
                   '剧集 ${ref.watch(dbProvider).count(MediaKind.show)} 部'),
             ),
             const ListTile(

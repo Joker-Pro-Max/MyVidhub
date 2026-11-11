@@ -48,3 +48,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider：自动更新安装 APK
+    implementation("androidx.core:core-ktx:1.13.1")
+}

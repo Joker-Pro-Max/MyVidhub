@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/models.dart';
 import '../features/home/home_page.dart';
 import '../features/library/library_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/settings/update_ui.dart';
+import 'update_controller.dart';
 
 /// 自适应外壳：
 /// - 手机（< 600dp）：底部导航
 /// - 平板（600–1200dp）：左侧 NavigationRail
 /// - 桌面 / 大屏平板横屏（≥ 1200dp）：展开的侧边栏
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动几秒后静默检查更新，避免拖慢冷启动
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) ref.read(updateProvider.notifier).autoCheck();
+    });
+  }
 
   static const _destinations = [
     (icon: Icons.home_outlined, selected: Icons.home_rounded, label: '首页'),
@@ -30,6 +42,12 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(updateProvider, (prev, next) {
+      if (next.shouldPrompt) {
+        ref.read(updateProvider.notifier).promptShown();
+        UpdateDialog.show(context);
+      }
+    });
     final width = MediaQuery.sizeOf(context).width;
     final pages = IndexedStack(
       index: _index,
