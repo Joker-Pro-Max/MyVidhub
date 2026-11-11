@@ -75,7 +75,7 @@ class Updater {
   Map<String, String> get _headers => {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'MyVidhub-Updater',
+        'User-Agent': 'ReelNest-Updater',
       };
 
   /// 返回比当前新的版本；已是最新返回 null。
@@ -148,7 +148,7 @@ class Updater {
         await res.drain<void>();
         if (location == null) throw UpdateException('下载地址无效');
         final req2 = await client.getUrl(Uri.parse(location));
-        req2.headers.set('User-Agent', 'MyVidhub-Updater');
+        req2.headers.set('User-Agent', 'ReelNest-Updater');
         res = await req2.close();
       }
       if (res.statusCode != 200) throw UpdateException('下载失败（HTTP ${res.statusCode}）');

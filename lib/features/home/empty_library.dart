@@ -20,7 +20,7 @@ class EmptyLibrary extends ConsumerWidget {
             const Text('把你的片库放进来', style: TypeScale.largeTitle),
             const SizedBox(height: 14),
             Text(
-              '选择存放电影和剧集的文件夹。MyVidhub 会读取里面的 NFO 和海报，'
+              '选择存放电影和剧集的文件夹。ReelNest 会读取里面的 NFO 和海报，'
               '用 Kodi、Jellyfin、Emby 或 tinyMediaManager 整理过的目录可以直接识别。',
               style: TypeScale.body.copyWith(color: Palette.text2),
             ),

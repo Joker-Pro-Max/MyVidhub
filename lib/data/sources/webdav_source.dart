@@ -26,7 +26,7 @@ class WebDavSource implements MediaSource {
     ..badCertificateCallback = (_, _, _) => true;
 
   Map<String, String> get headers => {
-        'User-Agent': 'MyVidhub',
+        'User-Agent': 'ReelNest',
         if (config.username.isNotEmpty) 'Authorization': config.basicAuth,
       };
 

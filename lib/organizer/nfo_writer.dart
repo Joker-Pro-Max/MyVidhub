@@ -1,4 +1,4 @@
-// 生成 Kodi 风格电影 NFO（移植自花栗鼠 nfo.rs）。Infuse、VidHub、Jellyfin、Emby、MyVidhub 通用。
+// 生成 Kodi 风格电影 NFO（移植自花栗鼠 nfo.rs）。Infuse、VidHub、Jellyfin、Emby、ReelNest 通用。
 import 'meta.dart';
 
 String _esc(String s) {

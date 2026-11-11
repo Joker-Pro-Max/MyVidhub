@@ -9,7 +9,7 @@
     <!-- 自动更新：调起系统安装器安装新版本 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:label="MyVidhub"
+        android:label="ReelNest"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
         android:name="${applicationName}"

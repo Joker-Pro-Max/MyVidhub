@@ -110,7 +110,7 @@ void main() {
     expect(m.posterUrl, 'https://x/thumb.jpg');
   });
 
-  test('生成的 NFO 能被 MyVidhub 自己读回', () {
+  test('生成的 NFO 能被 ReelNest 自己读回', () {
     final meta = ScrapedMeta(
       source: 'javbus',
       code: 'IPX-535',

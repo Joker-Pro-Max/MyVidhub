@@ -1,4 +1,4 @@
-# MyVidhub 架构设计
+# ReelNest 架构设计（原 MyVidhub）
 
 > 本地影视库管理 + 播放器。参考 VidHub：读取 Kodi/Jellyfin 风格的 **NFO + 海报** 元数据，海报墙浏览，内置强兼容播放器。
 > 目标平台：**Android 平板（第一优先）**、Android 手机、iPhone/iPad、Windows、macOS。

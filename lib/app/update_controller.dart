@@ -120,7 +120,7 @@ class UpdateController extends Notifier<UpdateState> {
       final ok = await Updater.install(f);
       state = state.copyWith(
         status: UpdateStatus.ready,
-        message: ok ? null : '请在打开的系统设置中允许 MyVidhub「安装未知应用」，返回后点「安装」',
+        message: ok ? null : '请在打开的系统设置中允许 ReelNest「安装未知应用」，返回后点「安装」',
       );
     } catch (e) {
       state = state.copyWith(status: UpdateStatus.ready, message: '无法打开安装器：$e');

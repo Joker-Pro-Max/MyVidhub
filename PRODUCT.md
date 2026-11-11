@@ -12,7 +12,7 @@ The job on almost every screen is the same: *decide what to watch next, then sta
 
 ## Product Purpose
 
-MyVidhub turns a folder of video files into a private cinema: a poster wall built from the user's own NFO metadata and artwork, with a player strong enough for any file (MKV, HEVC, HDR, ASS subtitles). It exists because the user wants an Infuse / VidHub class experience on Android tablets, without a server.
+ReelNest turns a folder of video files into a private cinema: a poster wall built from the user's own NFO metadata and artwork, with a player strong enough for any file (MKV, HEVC, HDR, ASS subtitles). It exists because the user wants an Infuse / VidHub class experience on Android tablets, without a server.
 
 Success looks like: opening the app at night feels like the lights going down in a good cinema. The artwork carries the screen, the chrome recedes, and "continue watching" is one tap away.
 

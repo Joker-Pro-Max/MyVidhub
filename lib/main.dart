@@ -32,16 +32,16 @@ Future<void> main() async {
     container.read(scanProvider.notifier).scan(id);
   }
 
-  runApp(UncontrolledProviderScope(container: container, child: const MyVidhubApp()));
+  runApp(UncontrolledProviderScope(container: container, child: const ReelNestApp()));
 }
 
-class MyVidhubApp extends StatelessWidget {
-  const MyVidhubApp({super.key});
+class ReelNestApp extends StatelessWidget {
+  const ReelNestApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MyVidhub',
+      title: 'ReelNest',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       themeMode: ThemeMode.dark,

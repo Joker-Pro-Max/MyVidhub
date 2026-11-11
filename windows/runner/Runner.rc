@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.myvidhub" "\0"
-            VALUE "FileDescription", "myvidhub" "\0"
+            VALUE "CompanyName", "Joker-Pro-Max" "\0"
+            VALUE "FileDescription", "ReelNest" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "myvidhub" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.myvidhub. All rights reserved." "\0"
-            VALUE "OriginalFilename", "myvidhub.exe" "\0"
-            VALUE "ProductName", "myvidhub" "\0"
+            VALUE "InternalName", "ReelNest" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Joker-Pro-Max. All rights reserved." "\0"
+            VALUE "OriginalFilename", "ReelNest.exe" "\0"
+            VALUE "ProductName", "ReelNest" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

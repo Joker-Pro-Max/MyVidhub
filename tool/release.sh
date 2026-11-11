@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${1:?用法: tool/release.sh <版本号如 1.0.1> [更新说明]}"
-NOTES="${2:-MyVidhub $VERSION}"
+NOTES="${2:-ReelNest $VERSION}"
 
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本号格式应为 1.2.3"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "工作区有未提交的改动，请先提交"; exit 1; }
@@ -37,15 +37,15 @@ flutter build apk --release --split-per-abi "${DEFINES[@]}"
 
 OUT=build/app/outputs/flutter-apk
 mkdir -p dist
-rm -f dist/MyVidhub-"$VERSION"-*.apk
-cp "$OUT/app-arm64-v8a-release.apk"   "dist/MyVidhub-$VERSION-arm64.apk"
-cp "$OUT/app-armeabi-v7a-release.apk" "dist/MyVidhub-$VERSION-armv7.apk"
-cp "$OUT/app-x86_64-release.apk"      "dist/MyVidhub-$VERSION-x86_64.apk"
+rm -f dist/ReelNest-"$VERSION"-*.apk
+cp "$OUT/app-arm64-v8a-release.apk"   "dist/ReelNest-$VERSION-arm64.apk"
+cp "$OUT/app-armeabi-v7a-release.apk" "dist/ReelNest-$VERSION-armv7.apk"
+cp "$OUT/app-x86_64-release.apk"      "dist/ReelNest-$VERSION-x86_64.apk"
 trap - ERR
 
 git add pubspec.yaml
 git commit -q -m "release $TAG"
 git tag "$TAG"
 git push -q origin HEAD "$TAG"
-gh release create "$TAG" dist/MyVidhub-"$VERSION"-*.apk --title "MyVidhub $VERSION" --notes "$NOTES"
+gh release create "$TAG" dist/ReelNest-"$VERSION"-*.apk --title "ReelNest $VERSION" --notes "$NOTES"
 echo "==> 完成：$TAG"

@@ -48,7 +48,7 @@ Future<bool> _ensureAndroidStorage(BuildContext context) async {
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('允许读取文件'),
-      content: const Text('MyVidhub 需要读取视频、NFO 和海报图片。接下来会打开系统设置，'
+      content: const Text('ReelNest 需要读取视频、NFO 和海报图片。接下来会打开系统设置，'
           '请打开「允许访问所有文件」后返回。只读取，不会修改任何文件。'),
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
       actions: [

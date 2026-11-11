@@ -289,7 +289,7 @@ class ExecReport {
 }
 
 /// 执行整理：建文件夹 → 移动视频和字幕 → 写 NFO → 下载封面 / 海报。
-/// [onMoved] 在视频移动后回调（MyVidhub 用来迁移播放进度）。
+/// [onMoved] 在视频移动后回调（ReelNest 用来迁移播放进度）。
 Future<ExecReport> executePlan(
   OrganizePlan plan,
   ScrapedMeta meta,

@@ -24,7 +24,7 @@ class UpdateDialog extends ConsumerWidget {
     final busy = s.status == UpdateStatus.downloading;
 
     return AlertDialog(
-      title: Text('MyVidhub ${r.version}'),
+      title: Text('ReelNest ${r.version}'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460, maxHeight: 380),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [

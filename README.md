@@ -1,4 +1,6 @@
-# MyVidhub
+# ReelNest
+
+> 原名 MyVidhub。
 
 本地影视库管理：读取 Kodi / Jellyfin / Emby / tinyMediaManager 整理的 **NFO + 海报**，以海报墙方式浏览。
 Flutter 开发，一套代码支持 Android 平板 / 手机、iPad / iPhone、Windows、macOS。架构见 [ARCHITECTURE.md](ARCHITECTURE.md)。

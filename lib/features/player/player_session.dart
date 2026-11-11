@@ -59,7 +59,7 @@ class PlayerSession extends ChangeNotifier {
   Future<void> init() async {
     player = Player(
       configuration: const PlayerConfiguration(
-        title: 'MyVidhub',
+        title: 'ReelNest',
         libass: true, // ASS 特效字幕由 libass 原样渲染
         bufferSize: 64 * 1024 * 1024,
       ),

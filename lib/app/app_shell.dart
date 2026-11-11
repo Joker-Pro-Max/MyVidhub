@@ -210,14 +210,12 @@ class _Wordmark extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(color: Palette.light, borderRadius: BorderRadius.circular(7)),
-        child: const Icon(Icons.play_arrow_rounded, size: 20, color: Palette.onLight),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Image.asset('assets/icon/logo_small.png', width: 28, height: 28, filterQuality: FilterQuality.medium),
       ),
       const SizedBox(width: 10),
-      Text('MyVidhub', style: TypeScale.headline.copyWith(fontSize: 17, letterSpacing: -0.2)),
+      Text('ReelNest', style: TypeScale.headline.copyWith(fontSize: 17, letterSpacing: -0.2)),
     ],
   );
 }
