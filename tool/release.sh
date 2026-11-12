@@ -20,10 +20,6 @@ BUILD=$((OLD_BUILD + 1))
 TAG="v$VERSION+$BUILD"
 echo "==> 发布 $TAG"
 
-# 构建失败时还原版本号
-trap 'git checkout -- pubspec.yaml 2>/dev/null || true' ERR
-sed -i '' -E "s/^version: .*/version: $VERSION+$BUILD/" pubspec.yaml
-
 export LANG=en_US.UTF-8
 # 内置的默认 TMDB Key：只存在本机 .secrets/（git 已忽略），打包时编译进 App，源码里没有
 DEFINES=()
@@ -33,7 +29,9 @@ if [[ -s .secrets/tmdb_api_key ]]; then
 else
   echo "==> 内置 TMDB Key：否（.secrets/tmdb_api_key 不存在，用户需要自己在设置里填）"
 fi
-flutter build apk --release --split-per-abi "${DEFINES[@]}"
+# 构建时才传版本号，不改 pubspec：改动 pubspec 会触发 pub get 以非 release 模式重写插件注册表，
+# 把 dev-only 的 integration_test 加回去，导致 release 编译失败
+flutter build apk --release --split-per-abi --build-name="$VERSION" --build-number="$BUILD" "${DEFINES[@]}"
 
 OUT=build/app/outputs/flutter-apk
 mkdir -p dist
@@ -41,10 +39,14 @@ rm -f dist/ReelNest-"$VERSION"-*.apk
 cp "$OUT/app-arm64-v8a-release.apk"   "dist/ReelNest-$VERSION-arm64.apk"
 cp "$OUT/app-armeabi-v7a-release.apk" "dist/ReelNest-$VERSION-armv7.apk"
 cp "$OUT/app-x86_64-release.apk"      "dist/ReelNest-$VERSION-x86_64.apk"
-trap - ERR
+
+# 构建成功后再写入版本号，失败则回滚
+trap 'git checkout -- pubspec.yaml 2>/dev/null || true' ERR
+sed -i '' -E "s/^version: .*/version: $VERSION+$BUILD/" pubspec.yaml
 
 git add pubspec.yaml
 git commit -q -m "release $TAG"
+trap - ERR
 git tag "$TAG"
 git push -q origin HEAD "$TAG"
 gh release create "$TAG" dist/ReelNest-"$VERSION"-*.apk --title "ReelNest $VERSION" --notes "$NOTES"
