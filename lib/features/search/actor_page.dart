@@ -8,7 +8,7 @@ import '../../widgets/media_image.dart';
 import '../../widgets/poster_card.dart';
 import '../detail/detail_page.dart';
 
-/// 圆形头像（演员）。
+/// 圆形头像（演员）。没有头像时显示名字首字，图片加载失败也退回首字。
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar({super.key, required this.name, required this.thumb, this.size = 76});
   final String name;
@@ -25,10 +25,34 @@ class PersonAvatar extends StatelessWidget {
             path: thumb,
             decodeWidth: size,
             alignment: Alignment.topCenter,
-            placeholder: PosterPlaceholder(title: name),
+            placeholder: _AvatarFallback(name: name, size: size),
           ),
         ),
       );
+}
+
+/// 没有头像时的占位：按名字固定色相的底色 + 名字首字。
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({required this.name, required this.size});
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = name.trim();
+    final glyph = n.isEmpty ? '?' : n.characters.first.toUpperCase();
+    final hue = (name.hashCode % 360).abs().toDouble();
+    final c1 = HSLColor.fromAHSL(1, hue, 0.10, 0.20).toColor();
+    final c2 = HSLColor.fromAHSL(1, hue, 0.08, 0.12).toColor();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [c1, c2]),
+      ),
+      child: Center(
+        child: Text(glyph, style: TypeScale.title.copyWith(fontSize: size * 0.4, color: Palette.text3)),
+      ),
+    );
+  }
 }
 
 /// 演员页：片库里这位演员参演的所有影片和剧集。

@@ -6,6 +6,7 @@ import '../../app/app_shell.dart';
 import '../../app/app_settings.dart';
 import '../../app/auto_scrape.dart';
 import '../../app/providers.dart';
+import '../../app/translate_controller.dart';
 import '../../data/db/models.dart';
 import '../../ui/components.dart';
 import '../../ui/tokens.dart';
@@ -30,6 +31,7 @@ class SettingsPage extends ConsumerWidget {
     ref.watch(libraryRevisionProvider);
     final settings = ref.watch(appSettingsProvider);
     final auto = ref.watch(autoScrapeProvider);
+    final tr = ref.watch(translateProvider);
     final roots = ref.watch(storageRootsProvider).value ?? const <StorageRoot>[];
     final insets = ShellInsets.of(context);
     final g = FormFactor.of(context).gutter;
@@ -159,6 +161,44 @@ class SettingsPage extends ConsumerWidget {
                       onChanged: (v) => ref.read(appSettingsProvider.notifier).setBlurAv(v),
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              GroupedList(
+                header: '翻译',
+                footer: [
+                  if (tr.running) '正在翻译 ${tr.done} / ${tr.total}',
+                  if (!tr.running && tr.message != null) tr.message!,
+                  '把非中文（日文、英文、韩文等）的片名和演员名翻译成中文，番号不翻译。译文保存在本机片库里，不修改 NFO；'
+                      '片名原文保留在「原名」，搜索原文照样能找到。使用 Google 翻译，片名和演员名会发送给 Google，需要能访问 Google。',
+                ].join('\n'),
+                children: [
+                  SettingRow(
+                    icon: Icons.translate_rounded,
+                    title: '翻译为中文',
+                    subtitle: tr.running ? '正在翻译…' : '${ref.read(translateProvider.notifier).pending()} 条待翻译',
+                    trailing: tr.running
+                        ? PillButton(
+                            label: '停止',
+                            primary: false,
+                            compact: true,
+                            onPressed: () => ref.read(translateProvider.notifier).cancel(),
+                          )
+                        : PillButton(
+                            label: '翻译',
+                            compact: true,
+                            onPressed: () => ref.read(translateProvider.notifier).run(),
+                          ),
+                  ),
+                  if (db.translationCount() > 0)
+                    SettingRow(
+                      icon: Icons.undo_rounded,
+                      title: '恢复原文',
+                      subtitle: '已翻译 ${db.translationCount()} 条 · 删除译文并重新扫描',
+                      enabled: !tr.running,
+                      onTap: () => ref.read(translateProvider.notifier).restore(),
+                    ),
                 ],
               ),
               const SizedBox(height: 32),

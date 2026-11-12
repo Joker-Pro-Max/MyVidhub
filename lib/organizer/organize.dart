@@ -280,6 +280,33 @@ Future<void> _writeNew(String path, List<int> data, List<UndoOp> ops) async {
   ops.add(UndoOp('create', path: path));
 }
 
+/// Kodi 风格的本地演员头像 `.actors/<演员名>.jpg`（空格写成下划线）。
+/// 存到本地后不依赖网站防盗链，离线、SMB 也能显示。已有的不重复下载。
+String actorThumbFileName(String name) =>
+    '${name.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '').replaceAll(' ', '_')}.jpg';
+
+Future<void> _saveActorThumbs(String dir, ScrapedMeta meta, List<UndoOp> ops, List<String> warnings) async {
+  final want = meta.actors.where((a) => a.name.trim().isNotEmpty && (a.thumb?.startsWith('http') ?? false)).take(20);
+  if (want.isEmpty) return;
+  final actorsDir = p.join(dir, '.actors');
+  var failed = 0;
+  for (final a in want) {
+    final file = p.join(actorsDir, actorThumbFileName(a.name));
+    if (File(file).existsSync()) continue;
+    try {
+      final bytes = await downloadImage(a.thumb!);
+      if (!Directory(actorsDir).existsSync()) {
+        await Directory(actorsDir).create(recursive: true);
+        ops.add(UndoOp('mkdir', path: actorsDir));
+      }
+      await _writeNew(file, bytes, ops);
+    } catch (_) {
+      failed++;
+    }
+  }
+  if (failed > 0) warnings.add('$failed 张演员头像下载失败');
+}
+
 class ExecReport {
   const ExecReport(this.destVideo, this.warnings);
   final String destVideo;
@@ -348,6 +375,7 @@ Future<ExecReport> executePlan(
     await _writeNew(p.join(plan.dir, '${plan.stem}-fanart.jpg'), cover, ops);
     await _writeNew(p.join(plan.dir, 'fanart.jpg'), cover, ops);
   }
+  await _saveActorThumbs(plan.dir, meta, ops, warnings);
   return ExecReport(dest, warnings);
 }
 
@@ -431,6 +459,7 @@ Future<ExecReport> refreshMetadata(
     await replaceFile(p.join(dir, '$stem-fanart.jpg'), cover, ops, backupDir);
     if (single) await replaceFile(p.join(dir, 'fanart.jpg'), cover, ops, backupDir);
   }
+  await _saveActorThumbs(dir, meta, ops, warnings);
   return ExecReport(videoPath, warnings);
 }
 

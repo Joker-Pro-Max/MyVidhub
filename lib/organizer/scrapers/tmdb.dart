@@ -73,6 +73,25 @@ Future<ScrapedMeta?> tmdbDetailById(int id, String apiKey) async {
   return d == null ? null : mapTmdb(d, d, '', null);
 }
 
+/// 按演员名搜 TMDB 人物，取第一个有资料图的结果。没配 key / 没命中 / 网络错误返回 null。
+Future<String?> tmdbPersonThumb(String name, String apiKey) async {
+  final q = name.trim();
+  if (q.isEmpty || apiKey.trim().isEmpty) return null;
+  final found = await _get('/search/person', {
+    'query': q,
+    'language': 'zh-CN',
+    'api_key': apiKey.trim(),
+  });
+  final results = found?['results'];
+  if (results is! List) return null;
+  for (final r in results) {
+    if (r is! Map) continue;
+    final p = r['profile_path'];
+    if (p is String && p.trim().isNotEmpty) return '$_profileBase$p';
+  }
+  return null;
+}
+
 ScrapedMeta mapTmdb(Map<String, dynamic> detail, Map<String, dynamic> top, String queryTitle, int? queryYear) {
   String? s(Map v, String k) {
     final x = v[k];

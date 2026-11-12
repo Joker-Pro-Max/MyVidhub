@@ -37,7 +37,7 @@ class MediaImage extends StatelessWidget {
     final ImageProvider provider = isRemotePath(p)
         ? RemoteImage(p)
         : p.startsWith('http://') || p.startsWith('https://')
-            ? NetworkImage(p)
+            ? NetworkImage(p, headers: _hotlinkHeaders(p))
             : FileImage(File(p));
     return Image(
       image: ResizeImage(provider, width: cacheWidth, policy: ResizeImagePolicy.fit),
@@ -134,4 +134,11 @@ class RemoteImage extends ImageProvider<RemoteImage> {
 
   @override
   int get hashCode => uri.hashCode;
+}
+
+/// 有些站点（JavBus）的图片没有 Referer 会返回 403。
+Map<String, String>? _hotlinkHeaders(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host.contains('tmdb.org')) return null;
+  return {'Referer': '${u.scheme}://${u.host}/', 'User-Agent': 'Mozilla/5.0'};
 }

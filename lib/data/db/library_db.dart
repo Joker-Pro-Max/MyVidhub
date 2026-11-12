@@ -11,7 +11,7 @@ class LibraryDb {
 
   final Database _db;
 
-  static const _schemaVersion = 7;
+  static const _schemaVersion = 8;
 
   static LibraryDb open(String path) {
     final db = sqlite3.open(path);
@@ -70,6 +70,10 @@ class LibraryDb {
           PRIMARY KEY (source_id, key));
         CREATE TABLE IF NOT EXISTS auto_scrape_attempts (path TEXT PRIMARY KEY, at INTEGER NOT NULL);
       ''');
+    }
+    if (v < 8) {
+      // 片名 / 演员名的中文译文（不改 NFO；扫描写入时自动套用）
+      _db.execute('CREATE TABLE IF NOT EXISTS translations (src TEXT PRIMARY KEY, zh TEXT NOT NULL)');
     }
     _db.execute('PRAGMA user_version = $_schemaVersion;');
   }
@@ -237,7 +241,10 @@ class LibraryDb {
           fanart=excluded.fanart, logo=excluded.logo, dir=excluded.dir,
           nfo_path=excluded.nfo_path, scanned_at=excluded.scanned_at, is_av=excluded.is_av
       ''', [
-        sourceId, item.key, kind, item.title, nfo?.originalTitle, nfo?.sortTitle, item.year,
+        sourceId, item.key, kind, _tr(item.title),
+        // 片名被翻译时，原文放进"原名"（搜索原文仍能找到）
+        nfo?.originalTitle ?? (_tr(item.title) != item.title ? item.title : null),
+        nfo?.sortTitle, item.year,
         nfo?.plot, nfo?.tagline, nfo?.rating, nfo?.runtime, nfo?.premiered, nfo?.mpaa,
         nfo?.setName, nfo?.status, _list(nfo?.genres), _list(nfo?.countries),
         _list(nfo?.studios), _list(nfo?.directors), _list(nfo?.writers), _list(nfo?.tags),
@@ -257,7 +264,7 @@ class LibraryDb {
           _db.prepare('INSERT INTO actors(item_id, ord, name, role, thumb) VALUES (?,?,?,?,?)');
       for (var i = 0; i < item.actors.length; i++) {
         final a = item.actors[i];
-        actorStmt.execute([id, i, a.name, a.role, a.thumb]);
+        actorStmt.execute([id, i, _tr(a.name), a.role, a.thumb]);
       }
       actorStmt.close();
 
@@ -487,6 +494,86 @@ class LibraryDb {
 
   void markAutoScrapeAttempt(String path) => _db.execute(
       'INSERT OR REPLACE INTO auto_scrape_attempts(path, at) VALUES (?, ?)', [path, _now()]);
+
+  // ------------------------------------------------------------ 翻译
+
+  Map<String, String>? _trCache;
+
+  /// 有译文就返回中文，否则原样返回。
+  String _tr(String s) {
+    final c = _trCache ??= {
+      for (final r in _db.select('SELECT src, zh FROM translations')) r['src'] as String: r['zh'] as String,
+    };
+    return c[s] ?? s;
+  }
+
+  int translationCount() => _db.select('SELECT COUNT(*) AS n FROM translations').first['n'] as int;
+
+  /// 片库里出现过的所有片名和演员名（去重），由调用方筛出需要翻译的。
+  ({List<String> titles, List<String> actors}) translatableTexts() => (
+        titles: [for (final r in _db.select('SELECT DISTINCT title FROM items')) r['title'] as String],
+        actors: [for (final r in _db.select('SELECT DISTINCT name FROM actors')) r['name'] as String],
+      );
+
+  /// 保存译文并立即套用到片库（片名原文移到"原名"，演员名直接替换）。
+  void saveTranslations(Map<String, String> map) {
+    if (map.isEmpty) return;
+    _db.execute('BEGIN');
+    try {
+      final ins = _db.prepare('INSERT OR REPLACE INTO translations(src, zh) VALUES (?, ?)');
+      final upItem = _db.prepare(
+          'UPDATE items SET original_title = COALESCE(original_title, title), title = ? WHERE title = ?');
+      final upActor = _db.prepare('UPDATE actors SET name = ? WHERE name = ?');
+      for (final e in map.entries) {
+        if (e.value.trim().isEmpty || e.value == e.key) continue;
+        ins.execute([e.key, e.value]);
+        upItem.execute([e.value, e.key]);
+        upActor.execute([e.value, e.key]);
+      }
+      ins.close();
+      upItem.close();
+      upActor.close();
+      _db.execute('COMMIT');
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+    _trCache = null;
+  }
+
+  /// 删除全部译文（恢复原文需要重新扫描）。
+  void clearTranslations() {
+    _db.execute('DELETE FROM translations');
+    _trCache = null;
+  }
+
+  // ------------------------------------------------------------ 演员
+
+  List<PersonHit> allActors() => _db
+      .select('''SELECT name, MAX(thumb) AS thumb, COUNT(DISTINCT item_id) AS n FROM actors
+          GROUP BY name ORDER BY n DESC, name''')
+      .map((r) => PersonHit(r['name'] as String, r['thumb'] as String?, r['n'] as int))
+      .toList();
+
+  /// 还没有头像的演员名（去重），按参演部数从多到少。
+  List<String> actorsMissingThumb() => _db
+      .select('''SELECT name FROM actors WHERE thumb IS NULL OR thumb = ''
+          GROUP BY name ORDER BY COUNT(DISTINCT item_id) DESC, name''')
+      .map((r) => r['name'] as String)
+      .toList();
+
+  /// 演员名的原文：演员名已被翻成中文时，返回翻译前的原名（JavBus 只认日文名，
+  /// 用中文名去搜会 404）。没有对应译文就原样返回。
+  String originalActorName(String name) {
+    final r = _db.select('SELECT src FROM translations WHERE zh = ? LIMIT 1', [name]);
+    return r.isEmpty ? name : r.first['src'] as String;
+  }
+
+  /// 给某位演员的所有记录补上头像；已有的头像不覆盖。
+  void setActorThumb(String name, String thumb) {
+    if (thumb.trim().isEmpty) return;
+    _db.execute("UPDATE actors SET thumb = ? WHERE name = ? AND (thumb IS NULL OR thumb = '')", [thumb, name]);
+  }
 
   /// 从媒体库移除（不删文件），以后重新扫描也不会再加回来。
   void excludeItem(int id) {

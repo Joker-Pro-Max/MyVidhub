@@ -99,7 +99,13 @@ ScrapedMeta parseJavbusDetail(String body, String sourceUrl, String fallbackCode
     final img = a.querySelector('img');
     final name = (img?.attributes['title'] ?? a.attributes['title'] ?? _joined(a)).trim();
     if (name.isEmpty || _invalidActress.contains(name) || actors.any((x) => x.name == name)) continue;
-    actors.add(ScrapedActor(name, _abs(base, img?.attributes['src'])));
+    actors.add(ScrapedActor(name, _actorThumb(base, img?.attributes['src'])));
+  }
+  // 页面上「名字链接」在前、带头像的那份在后，按名字把头像补上
+  for (final img in doc.querySelectorAll('#avatar-waterfall img[title], .star-box img[title]')) {
+    final i = actors.indexWhere((x) => x.name == img.attributes['title']?.trim() && x.thumb == null);
+    final t = _actorThumb(base, img.attributes['src']);
+    if (i >= 0 && t != null) actors[i] = ScrapedActor(actors[i].name, t);
   }
 
   final genres = <String>[];
@@ -172,4 +178,42 @@ Future<ScrapedMeta?> javbusFindByCode(String code) async {
   // 搜索页兜底"只有一个候选就采用"时可能是别的影片，番号对不上就不要
   if (normalizeCode(meta.code ?? '') != normalizeCode(code)) return null;
   return meta;
+}
+
+/// 演员头像地址；JavBus 没有头像时给的是 nowprinting 占位图，不要。
+String? _actorThumb(Uri base, String? src) {
+  final u = _abs(base, src);
+  return u == null || u.contains('nowprinting') ? null : u;
+}
+
+/// 按演员名在 JavBus 搜女优，返回头像地址；精确同名优先，只有一个结果也直接采用，
+/// 其余情况只在名字足够相似时才认（避免搜索结果里认错人）。找不到返回 null。
+Future<String?> javbusActorThumb(String name) async {
+  final q = name.trim();
+  if (q.isEmpty) return null;
+  final body = await _fetch('$_base/searchstar/${Uri.encodeComponent(q)}');
+  if (body == null) return null;
+  final doc = html.parse(body);
+  final base = Uri.parse(_base);
+  String? first;
+  String? similar;
+  var count = 0;
+  for (final a in doc.querySelectorAll("a.avatar-box[href*='/star/']")) {
+    final img = a.querySelector('img');
+    final thumb = _actorThumb(base, img?.attributes['src']);
+    if (thumb == null) continue;
+    count++;
+    first ??= thumb;
+    final title = (img?.attributes['title'] ?? '').trim();
+    if (title == q) return thumb;
+    similar ??= _nameSimilar(title, q) ? thumb : null;
+  }
+  return count == 1 ? first : similar;
+}
+
+/// 两个名字是否至少有 2 个相同汉字/字符。
+bool _nameSimilar(String a, String b) {
+  final sa = a.runes.map(String.fromCharCode).where((c) => c.trim().isNotEmpty).toSet();
+  final sb = b.runes.map(String.fromCharCode).where((c) => c.trim().isNotEmpty).toSet();
+  return sa.intersection(sb).length >= 2;
 }

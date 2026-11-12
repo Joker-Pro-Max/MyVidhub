@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/models.dart';
+import '../features/actors/actors_page.dart';
 import '../features/home/home_page.dart';
 import '../features/library/library_page.dart';
 import '../features/search/search_page.dart';
@@ -34,7 +35,7 @@ class ShellInsets extends InheritedWidget {
 }
 
 /// 自适应外壳：
-/// - 平板 / 桌面：顶部浮动的毛玻璃标签胶囊（首页 / 电影 / 剧集），设置收在右上角齿轮
+/// - 平板 / 桌面：顶部浮动的毛玻璃标签胶囊（首页 / 电影 / 演员 / 剧集），设置收在右上角齿轮
 /// - 手机：底部毛玻璃导航条（图标 + 文字，无指示胶囊）
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -49,16 +50,17 @@ class _AppShellState extends ConsumerState<AppShell> {
   static const _tabs = [
     (icon: Icons.home_outlined, selected: Icons.home_rounded, label: '首页'),
     (icon: Icons.movie_outlined, selected: Icons.movie_rounded, label: '电影'),
+    (icon: Icons.people_outline_rounded, selected: Icons.people_rounded, label: '演员'),
     (icon: Icons.tv_outlined, selected: Icons.tv_rounded, label: '剧集'),
     (icon: Icons.settings_outlined, selected: Icons.settings_rounded, label: '设置'),
     (icon: Icons.search_rounded, selected: Icons.search_rounded, label: '搜索'),
   ];
 
-  static const _settings = 3;
-  static const _search = 4;
+  static const _settings = 4;
+  static const _search = 5;
 
   /// 手机底栏的排列顺序（下标指向 _tabs）。
-  static const _phoneOrder = [0, 1, 2, _search, _settings];
+  static const _phoneOrder = [0, 1, 2, 3, _search, _settings];
 
   @override
   void initState() {
@@ -85,8 +87,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     final pages = IndexedStack(
       index: _index,
       children: [
-        HomePage(onSeeAll: (k) => _select(k == MediaKind.movie ? 1 : 2)),
+        HomePage(onSeeAll: (k) => _select(k == MediaKind.movie ? 1 : 3)),
         const LibraryPage(kind: MediaKind.movie),
+        const ActorsPage(),
         const LibraryPage(kind: MediaKind.show),
         const SettingsPage(),
         SearchPage(active: _index == _search),
@@ -170,7 +173,7 @@ class _TopBar extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        for (var i = 0; i < 3; i++)
+                        for (var i = 0; i < 4; i++)
                           _TopTab(label: _AppShellState._tabs[i].label, selected: index == i, onTap: () => onSelect(i)),
                       ],
                     ),
