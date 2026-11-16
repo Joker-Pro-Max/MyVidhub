@@ -51,6 +51,7 @@ class Hud {
 
 class _PlayerPageState extends ConsumerState<PlayerPage> {
   late final PlayerSession session;
+  final _hdrDetector = AutoHdrDetector();
   final _focus = FocusNode();
   bool _ready = false;
 
@@ -78,7 +79,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   @override
   void initState() {
     super.initState();
-    session = PlayerSession(db: ref.read(dbProvider), queue: widget.queue, startIndex: widget.startIndex);
+    session = PlayerSession(
+      db: ref.read(dbProvider),
+      queue: widget.queue,
+      startIndex: widget.startIndex,
+      onTargetOpening: _hdrDetector.cancel,
+      onTargetOpened: _detectHdr,
+    );
     session.addListener(_onSession);
     _init();
     if (isMobile) {
@@ -117,6 +124,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
   @override
   void dispose() {
+    _hdrDetector.cancel();
     _hideTimer?.cancel();
     _hudTimer?.cancel();
     _resumeTimer?.cancel();
@@ -174,18 +182,30 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
   // ------------------------------------------------------------ 动作
 
+  void _detectHdr(PlayItem item, PlayTarget target) {
+    if (!Platform.isAndroid) return;
+    unawaited(() async {
+      final detected = await _hdrDetector.detect(target);
+      if (!detected || !mounted || !identical(session.current, item) || _openingHdr) return;
+      await _openHdrPlayer();
+    }());
+  }
+
   Future<void> _openHdrPlayer() async {
     if (_openingHdr) return;
+    _hdrDetector.cancel();
     _openingHdr = true;
     final item = session.current;
     final wasPlaying = session.player.state.playing;
     try {
       await session.player.pause();
-      final position = session.player.state.position;
+      final currentPosition = session.player.state.position;
+      final position = currentPosition == Duration.zero ? session.resumedFrom ?? currentPosition : currentPosition;
       final target = await SourceRegistry.instance.playTarget(item.path);
       final subtitles = target.subtitles.isNotEmpty
           ? target.subtitles
           : await findLocalHdrSubtitles(item.path);
+      if (!mounted || !identical(session.current, item)) return;
       final result = await const MethodChannel('myvidhub/hdr_player')
           .invokeMapMethod<String, dynamic>('play', {
         'url': target.url,

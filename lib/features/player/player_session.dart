@@ -24,11 +24,19 @@ enum AspectMode {
 
 /// 一次播放会话：持有 mpv 播放器、播放队列，负责进度记忆与自动连播。
 class PlayerSession extends ChangeNotifier {
-  PlayerSession({required this.db, required this.queue, required int startIndex})
+  PlayerSession({
+    required this.db,
+    required this.queue,
+    required int startIndex,
+    this.onTargetOpening,
+    this.onTargetOpened,
+  })
       : index = startIndex;
 
   final LibraryDb db;
   final List<PlayItem> queue;
+  final VoidCallback? onTargetOpening;
+  final void Function(PlayItem item, PlayTarget target)? onTargetOpened;
   int index;
 
   late final Player player;
@@ -96,8 +104,10 @@ class PlayerSession extends ChangeNotifier {
 
   Future<void> _openCurrent({bool fromStart = false}) async {
     _cancelUpNext();
+    onTargetOpening?.call();
     error = null;
-    final pr = db.progress(current.path);
+    final item = current;
+    final pr = db.progress(item.path);
     Duration? start;
     if (!fromStart && pr != null && !pr.finished && pr.positionMs > 30000) {
       start = Duration(milliseconds: pr.positionMs);
@@ -108,7 +118,7 @@ class PlayerSession extends ChangeNotifier {
     // 本地文件直接播放；NAS 上的文件解析成 HTTP 地址（WebDAV 直连 / SMB 走本地代理）
     final PlayTarget target;
     try {
-      target = await SourceRegistry.instance.playTarget(current.path);
+      target = await SourceRegistry.instance.playTarget(item.path);
     } catch (e) {
       error = '$e';
       notifyListeners();
@@ -117,7 +127,9 @@ class PlayerSession extends ChangeNotifier {
     final np = _native;
     await np?.setProperty('http-header-fields', target.httpHeader ?? '');
     await player.open(Media(target.url, start: start), play: true);
+    if (_disposed || !identical(current, item)) return;
     notifyListeners();
+    onTargetOpened?.call(item, target);
 
     if (target.subtitles.isNotEmpty && np != null) {
       // 等文件真正加载（拿到时长）后再挂外挂字幕

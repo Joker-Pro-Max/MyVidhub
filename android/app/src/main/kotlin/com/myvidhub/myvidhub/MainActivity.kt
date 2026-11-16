@@ -12,11 +12,27 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private var hdrResult: MethodChannel.Result? = null
+    private val dolbyProbes = mutableSetOf<DolbyVisionProbe>()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "myvidhub/hdr_player")
             .setMethodCallHandler { call, result ->
+                if (call.method == "probe") {
+                    val url = call.argument<String>("url")
+                    if (url.isNullOrBlank()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    lateinit var probe: DolbyVisionProbe
+                    probe = DolbyVisionProbe(this, url, call.argument<String>("header")) { detected ->
+                        dolbyProbes.remove(probe)
+                        result.success(detected)
+                    }
+                    dolbyProbes.add(probe)
+                    probe.start()
+                    return@setMethodCallHandler
+                }
                 if (call.method != "play") {
                     result.notImplemented()
                     return@setMethodCallHandler
@@ -96,6 +112,11 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onDestroy() {
+        dolbyProbes.toList().forEach { it.finish() }
+        super.onDestroy()
     }
 
     @Deprecated("Android activity result callback")
