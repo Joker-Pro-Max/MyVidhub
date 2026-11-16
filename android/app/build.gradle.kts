@@ -52,4 +52,6 @@ flutter {
 dependencies {
     // FileProvider：自动更新安装 APK
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
 }

@@ -53,6 +53,7 @@ class PlayerSession extends ChangeNotifier {
   final _subs = <StreamSubscription<dynamic>>[];
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
+  bool _externalProgressSaved = false;
 
   NativePlayer? get _native => player.platform is NativePlayer ? player.platform as NativePlayer : null;
 
@@ -152,7 +153,7 @@ class PlayerSession extends ChangeNotifier {
 
   /// 保存进度。看到 92% 以上，或长片剩余不足 90 秒，视为看完。
   void saveProgress({bool forceFinished = false}) {
-    if (_disposed) return;
+    if (_disposed || _externalProgressSaved) return;
     _lastSave = DateTime.now();
     final dur = player.state.duration;
     final pos = player.state.position;
@@ -166,6 +167,23 @@ class PlayerSession extends ChangeNotifier {
       durationMs: dur.inMilliseconds,
       finished: finished,
     );
+  }
+
+  /// 原生 HDR 播放页退出后，使用原生播放器的进度，避免被旧的 mpv 状态覆盖。
+  void saveExternalProgress({required int positionMs, required int durationMs, required bool finished}) {
+    if (_disposed || durationMs <= 0) return;
+    final pos = positionMs.clamp(0, durationMs);
+    final watched = finished ||
+        pos >= durationMs * 0.92 ||
+        (durationMs > const Duration(minutes: 10).inMilliseconds &&
+            durationMs - pos < const Duration(seconds: 90).inMilliseconds);
+    db.saveProgress(
+      current.path,
+      positionMs: watched ? 0 : pos,
+      durationMs: durationMs,
+      finished: watched,
+    );
+    _externalProgressSaved = true;
   }
 
   void _onCompleted(bool completed) {

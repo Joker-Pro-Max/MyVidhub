@@ -26,6 +26,7 @@ class PlayerControls extends StatelessWidget {
     required this.onToggleLock,
     required this.onInteraction,
     this.onToggleFullscreen,
+    this.onHdrPlayback,
   });
 
   final PlayerSession session;
@@ -40,6 +41,7 @@ class PlayerControls extends StatelessWidget {
   final VoidCallback onToggleLock;
   final VoidCallback onInteraction;
   final VoidCallback? onToggleFullscreen;
+  final VoidCallback? onHdrPlayback;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +120,8 @@ class PlayerControls extends StatelessWidget {
                         ),
                       ),
                       _TopAction(icon: Icons.aspect_ratio_rounded, label: '画面', onTap: () => onOpenPanel(PlayerPanel.display)),
+                      if (onHdrPlayback != null)
+                        _TopAction(icon: Icons.hdr_on_rounded, label: 'HDR', onTap: onHdrPlayback!),
                       if (session.queue.length > 1)
                         _TopAction(
                             icon: Icons.video_library_outlined, label: '选集', onTap: () => onOpenPanel(PlayerPanel.episodes)),

@@ -5,6 +5,7 @@ import 'package:myvidhub/data/db/library_db.dart';
 import 'package:myvidhub/data/db/models.dart';
 import 'package:myvidhub/data/sources/local_source.dart';
 import 'package:myvidhub/features/player/play_item.dart';
+import 'package:myvidhub/features/player/player_session.dart';
 import 'package:myvidhub/services/library_scanner.dart';
 import 'package:path/path.dart' as p;
 
@@ -92,5 +93,33 @@ void main() {
     db.finishScan(src.id, stamp);
     expect(db.progress(path)!.positionMs, 123000);
     expect(db.continueWatching().single.title, '阿凡达');
+  });
+
+  test('原生 HDR 播放进度不会被旧播放器状态覆盖', () {
+    final id = idOf(MediaKind.movie, '阿凡达');
+    final path = db.detail(id)!.files.single.path;
+    final session = PlayerSession(
+      db: db,
+      queue: [PlayItem(path: path, title: '阿凡达')],
+      startIndex: 0,
+    );
+    session.saveExternalProgress(positionMs: 600000, durationMs: 9720000, finished: false);
+    session.saveProgress();
+    expect(db.progress(path)!.positionMs, 600000);
+    expect(db.progress(path)!.finished, isFalse);
+  });
+
+  test('原生 HDR 播完后保存为已看完', () {
+    final id = idOf(MediaKind.movie, '阿凡达');
+    final path = db.detail(id)!.files.single.path;
+    final session = PlayerSession(
+      db: db,
+      queue: [PlayItem(path: path, title: '阿凡达')],
+      startIndex: 0,
+    );
+    session.saveExternalProgress(positionMs: 9720000, durationMs: 9720000, finished: true);
+    session.saveProgress();
+    expect(db.progress(path)!.finished, isTrue);
+    expect(db.progress(path)!.positionMs, 0);
   });
 }

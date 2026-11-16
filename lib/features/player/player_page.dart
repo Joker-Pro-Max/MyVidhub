@@ -9,6 +9,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 import '../../app/providers.dart';
+import '../../services/source_registry.dart';
+import 'hdr_playback.dart';
 import 'play_item.dart';
 import 'player_controls.dart';
 import 'player_panels.dart';
@@ -61,6 +63,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   Timer? _hudTimer;
 
   bool _fullscreen = false;
+  bool _openingHdr = false;
   bool _showResume = false;
   Timer? _resumeTimer;
 
@@ -170,6 +173,51 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   }
 
   // ------------------------------------------------------------ 动作
+
+  Future<void> _openHdrPlayer() async {
+    if (_openingHdr) return;
+    _openingHdr = true;
+    final item = session.current;
+    final wasPlaying = session.player.state.playing;
+    try {
+      await session.player.pause();
+      final position = session.player.state.position;
+      final target = await SourceRegistry.instance.playTarget(item.path);
+      final subtitles = target.subtitles.isNotEmpty
+          ? target.subtitles
+          : await findLocalHdrSubtitles(item.path);
+      final result = await const MethodChannel('myvidhub/hdr_player')
+          .invokeMapMethod<String, dynamic>('play', {
+        'url': target.url,
+        'title': item.title,
+        'header': target.httpHeader,
+        'subtitles': subtitles,
+        'position': position.inMilliseconds,
+      });
+      if (!mounted || session.current.path != item.path) return;
+      if (result != null) {
+        session.saveExternalProgress(
+          positionMs: (result['position'] as num?)?.toInt() ?? position.inMilliseconds,
+          durationMs: (result['duration'] as num?)?.toInt() ?? 0,
+          finished: result['finished'] == true,
+        );
+        Navigator.of(context).pop();
+        return;
+      }
+      if (wasPlaying) await session.player.play();
+      if (!mounted) return;
+      _showControls();
+    } catch (e) {
+      if (!mounted) return;
+      if (wasPlaying) await session.player.play();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('无法打开 HDR 播放器：$e')),
+      );
+    } finally {
+      _openingHdr = false;
+    }
+  }
 
   void _togglePlay() {
     session.player.playOrPause();
@@ -412,6 +460,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                     onTogglePlay: _togglePlay,
                     onSeekBy: _seekBy,
                     onOpenPanel: _openPanel,
+                    onHdrPlayback: Platform.isAndroid ? _openHdrPlayer : null,
                     onToggleFullscreen: isMobile ? null : _toggleFullscreen,
                     onToggleLock: () {
                       setState(() => _locked = !_locked);
