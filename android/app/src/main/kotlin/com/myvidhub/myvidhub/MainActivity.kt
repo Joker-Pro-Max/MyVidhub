@@ -11,13 +11,24 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
-    private var hdrResult: MethodChannel.Result? = null
     private val dolbyProbes = mutableSetOf<DolbyVisionProbe>()
+    private lateinit var inlineHdrPlayer: InlineHdrPlayer
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        inlineHdrPlayer = InlineHdrPlayer(this)
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "myvidhub/inline_hdr_view", inlineHdrPlayer.viewFactory
+        )
+        io.flutter.plugin.common.EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger, "myvidhub/inline_hdr_events"
+        ).setStreamHandler(inlineHdrPlayer)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "myvidhub/hdr_player")
             .setMethodCallHandler { call, result ->
+                if (call.method.startsWith("inline")) {
+                    inlineHdrPlayer.handle(call, result)
+                    return@setMethodCallHandler
+                }
                 if (call.method == "probe") {
                     val url = call.argument<String>("url")
                     if (url.isNullOrBlank()) {
@@ -33,36 +44,7 @@ class MainActivity : FlutterActivity() {
                     probe.start()
                     return@setMethodCallHandler
                 }
-                if (call.method != "play") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
-                val url = call.argument<String>("url")
-                if (url.isNullOrEmpty()) {
-                    result.error("ARG", "missing video URL", null)
-                    return@setMethodCallHandler
-                }
-                if (hdrResult != null) {
-                    result.error("BUSY", "播放器已打开", null)
-                    return@setMethodCallHandler
-                }
-                try {
-                    val intent = Intent(this, HdrPlayerActivity::class.java)
-                        .putExtra("url", url)
-                        .putExtra("title", call.argument<String>("title"))
-                        .putExtra("header", call.argument<String>("header"))
-                        .putStringArrayListExtra(
-                            "subtitles",
-                            ArrayList(call.argument<List<String>>("subtitles") ?: emptyList())
-                        )
-                        .putExtra("position", (call.argument<Number>("position") ?: 0).toLong())
-                    hdrResult = result
-                    @Suppress("DEPRECATION")
-                    startActivityForResult(intent, HDR_PLAYER_REQUEST)
-                } catch (e: Exception) {
-                    hdrResult = null
-                    result.error("START_FAILED", e.message, null)
-                }
+                result.notImplemented()
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "myvidhub/installer")
             .setMethodCallHandler { call, result ->
@@ -114,31 +96,20 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    override fun onPause() {
+        if (::inlineHdrPlayer.isInitialized) inlineHdrPlayer.onBackground()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::inlineHdrPlayer.isInitialized) inlineHdrPlayer.onForeground()
+    }
+
     override fun onDestroy() {
         dolbyProbes.toList().forEach { it.finish() }
+        if (::inlineHdrPlayer.isInitialized) inlineHdrPlayer.close()
         super.onDestroy()
     }
 
-    @Deprecated("Android activity result callback")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != HDR_PLAYER_REQUEST) return
-        val pending = hdrResult
-        hdrResult = null
-        if (data == null) {
-            pending?.success(null)
-        } else {
-            pending?.success(
-                mapOf(
-                    "position" to data.getLongExtra("position", 0),
-                    "duration" to data.getLongExtra("duration", 0),
-                    "finished" to data.getBooleanExtra("finished", false)
-                )
-            )
-        }
-    }
-
-    companion object {
-        private const val HDR_PLAYER_REQUEST = 4187
-    }
 }

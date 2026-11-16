@@ -124,13 +124,19 @@ class _SubtitlePanel extends StatelessWidget {
                       style: TextStyle(color: Colors.white54, fontSize: 13)),
                 ),
               const Divider(color: Colors.white12, height: 32),
-              _Stepper(
-                label: '字幕延迟',
-                value: '${session.subDelay >= 0 ? '+' : ''}${session.subDelay.toStringAsFixed(1)} 秒',
-                onMinus: () => session.setSubDelay(session.subDelay - 0.1),
-                onPlus: () => session.setSubDelay(session.subDelay + 0.1),
-                onReset: session.subDelay == 0 ? null : () => session.setSubDelay(0),
-              ),
+              if (!session.isHdr)
+                _Stepper(
+                  label: '字幕延迟',
+                  value: '${session.subDelay >= 0 ? '+' : ''}${session.subDelay.toStringAsFixed(1)} 秒',
+                  onMinus: () => session.setSubDelay(session.subDelay - 0.1),
+                  onPlus: () => session.setSubDelay(session.subDelay + 0.1),
+                  onReset: session.subDelay == 0 ? null : () => session.setSubDelay(0),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text('HDR 模式暂不支持字幕延迟和 ASS 特效字幕。', style: TextStyle(color: Colors.white54)),
+                ),
               _Stepper(
                 label: '字幕大小',
                 value: '${(session.subScale * 100).round()}%',
@@ -246,7 +252,7 @@ class _DisplayPanel extends StatelessWidget {
         listenable: session,
         builder: (context, _) => ListView(children: [
           const _Header('画面比例'),
-          for (final m in AspectMode.values)
+          for (final m in session.isHdr ? AspectMode.values.take(3) : AspectMode.values)
             _Option(label: m.label, selected: session.aspect == m, onTap: () => session.setAspect(m)),
           const Divider(color: Colors.white12, height: 32),
           StreamBuilder<VideoParams>(

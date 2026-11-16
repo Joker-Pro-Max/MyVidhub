@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../data/db/library_db.dart';
 import '../../services/source_registry.dart';
+import 'inline_hdr_backend.dart';
 import 'play_item.dart';
 import 'subtitle_fonts.dart';
 
@@ -30,6 +31,7 @@ class PlayerSession extends ChangeNotifier {
     required int startIndex,
     this.onTargetOpening,
     this.onTargetOpened,
+    this.onHdrFallback,
   })
       : index = startIndex;
 
@@ -37,10 +39,15 @@ class PlayerSession extends ChangeNotifier {
   final List<PlayItem> queue;
   final VoidCallback? onTargetOpening;
   final void Function(PlayItem item, PlayTarget target)? onTargetOpened;
+  final void Function(String message)? onHdrFallback;
   int index;
 
   late final Player player;
   late final VideoController video;
+  late final Player _mpv;
+  late final InlineHdrBackend hdrBackend;
+
+  bool get isHdr => hdrBackend.active;
 
   PlayItem get current => queue[index];
   bool get hasNext => index + 1 < queue.length;
@@ -63,18 +70,20 @@ class PlayerSession extends ChangeNotifier {
   bool _disposed = false;
   bool _externalProgressSaved = false;
 
-  NativePlayer? get _native => player.platform is NativePlayer ? player.platform as NativePlayer : null;
+  NativePlayer? get _native => _mpv.platform is NativePlayer ? _mpv.platform as NativePlayer : null;
 
   Future<void> init() async {
-    player = Player(
+    _mpv = Player(
       configuration: const PlayerConfiguration(
         title: 'ReelNest',
         libass: true, // ASS 特效字幕由 libass 原样渲染
         bufferSize: 64 * 1024 * 1024,
       ),
     );
+    hdrBackend = InlineHdrBackend(_mpv, onModeChanged: notifyListeners, onFallback: onHdrFallback);
+    player = Player(platformPlayer: hdrBackend);
     video = VideoController(
-      player,
+      _mpv,
       configuration: const VideoControllerConfiguration(enableHardwareAcceleration: true),
     );
 
@@ -105,6 +114,8 @@ class PlayerSession extends ChangeNotifier {
   Future<void> _openCurrent({bool fromStart = false}) async {
     _cancelUpNext();
     onTargetOpening?.call();
+    await hdrBackend.closeHdr();
+    if (_disposed) return;
     error = null;
     final item = current;
     final pr = db.progress(item.path);
@@ -232,7 +243,11 @@ class PlayerSession extends ChangeNotifier {
 
   Future<void> setAspect(AspectMode m) async {
     aspect = m;
-    await _native?.setProperty('video-aspect-override', m.mpvAspect ?? '-1');
+    if (isHdr) {
+      await hdrBackend.setAspect(m.name);
+    } else {
+      await _native?.setProperty('video-aspect-override', m.mpvAspect ?? '-1');
+    }
     notifyListeners();
   }
 
@@ -244,7 +259,11 @@ class PlayerSession extends ChangeNotifier {
 
   Future<void> setSubScale(double scale) async {
     subScale = double.parse(scale.clamp(0.5, 2.5).toStringAsFixed(1));
-    await _native?.setProperty('sub-scale', subScale.toString());
+    if (isHdr) {
+      await hdrBackend.setSubtitleScale(subScale);
+    } else {
+      await _native?.setProperty('sub-scale', subScale.toString());
+    }
     notifyListeners();
   }
 

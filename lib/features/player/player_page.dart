@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -85,6 +86,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       startIndex: widget.startIndex,
       onTargetOpening: _hdrDetector.cancel,
       onTargetOpened: _detectHdr,
+      onHdrFallback: (message) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      },
     );
     session.addListener(_onSession);
     _init();
@@ -192,13 +196,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   }
 
   Future<void> _openHdrPlayer() async {
-    if (_openingHdr) return;
+    if (_openingHdr || session.isHdr) return;
     _hdrDetector.cancel();
     _openingHdr = true;
     final item = session.current;
-    final wasPlaying = session.player.state.playing;
     try {
-      await session.player.pause();
       final currentPosition = session.player.state.position;
       final position = currentPosition == Duration.zero ? session.resumedFrom ?? currentPosition : currentPosition;
       final target = await SourceRegistry.instance.playTarget(item.path);
@@ -206,33 +208,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
           ? target.subtitles
           : await findLocalHdrSubtitles(item.path);
       if (!mounted || !identical(session.current, item)) return;
-      final result = await const MethodChannel('myvidhub/hdr_player')
-          .invokeMapMethod<String, dynamic>('play', {
-        'url': target.url,
-        'title': item.title,
-        'header': target.httpHeader,
-        'subtitles': subtitles,
-        'position': position.inMilliseconds,
-      });
-      if (!mounted || session.current.path != item.path) return;
-      if (result != null) {
-        session.saveExternalProgress(
-          positionMs: (result['position'] as num?)?.toInt() ?? position.inMilliseconds,
-          durationMs: (result['duration'] as num?)?.toInt() ?? 0,
-          finished: result['finished'] == true,
-        );
-        Navigator.of(context).pop();
-        return;
-      }
-      if (wasPlaying) await session.player.play();
-      if (!mounted) return;
-      _showControls();
+      await session.hdrBackend.activate(target, subtitles, position);
+      if (mounted) _showControls();
     } catch (e) {
       if (!mounted) return;
-      if (wasPlaying) await session.player.play();
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('无法打开 HDR 播放器：$e')),
+        SnackBar(content: Text('无法切换 HDR 播放：$e')),
       );
     } finally {
       _openingHdr = false;
@@ -452,7 +433,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
             onHover: (_) => _showControls(),
             child: LayoutBuilder(builder: (context, c) {
               return Stack(fit: StackFit.expand, children: [
-                if (_ready)
+                if (_ready && session.isHdr)
+                  PlatformViewLink(
+                    viewType: 'myvidhub/inline_hdr_view',
+                    surfaceFactory: (context, controller) => AndroidViewSurface(
+                      controller: controller as AndroidViewController,
+                      gestureRecognizers: const {},
+                      hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+                    ),
+                    onCreatePlatformView: (params) => PlatformViewsService.initExpensiveAndroidView(
+                      id: params.id,
+                      viewType: 'myvidhub/inline_hdr_view',
+                      layoutDirection: TextDirection.ltr,
+                    )
+                      ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+                      ..create(),
+                  )
+                else if (_ready)
                   Video(
                     controller: session.video,
                     controls: NoVideoControls,
@@ -480,7 +477,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                     onTogglePlay: _togglePlay,
                     onSeekBy: _seekBy,
                     onOpenPanel: _openPanel,
-                    onHdrPlayback: Platform.isAndroid ? _openHdrPlayer : null,
+                    onHdrPlayback: Platform.isAndroid && !session.isHdr ? _openHdrPlayer : null,
                     onToggleFullscreen: isMobile ? null : _toggleFullscreen,
                     onToggleLock: () {
                       setState(() => _locked = !_locked);
